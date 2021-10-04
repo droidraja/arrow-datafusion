@@ -682,6 +682,7 @@ impl LastRowByUniqueKeyExecStream {
                     .iter()
                     .map(|k| next_batch.as_ref().unwrap().column(k.index()).clone())
                     .collect::<Vec<ArrayRef>>();
+                // TODO replace create_key with special compare with next kernel
                 create_key(next_key_columns.as_slice(), 0, &mut next_key)
                     .map_err(DataFusionError::into_arrow_external_error)?;
             } else {
