@@ -25,7 +25,7 @@ use std::task::{Context, Poll};
 use futures::stream::{Fuse, Stream};
 use futures::StreamExt;
 
-use arrow::array::{ArrayRef, BooleanArray};
+use arrow::array::{build_compare, ArrayRef, BooleanArray, DynComparator};
 pub use arrow::compute::SortOptions;
 use arrow::compute::{
     filter_record_batch, lexsort_to_indices, take, SortColumn, TakeOptions,
@@ -40,13 +40,10 @@ use crate::physical_plan::{ExecutionPlan, OptimizerHints, Partitioning};
 
 use crate::cube_ext::util::{cmp_array_row_same_types, lexcmp_array_rows};
 use crate::physical_plan::expressions::Column;
-use crate::physical_plan::hash_aggregate::create_key;
 use crate::physical_plan::memory::MemoryStream;
 use arrow::array::{make_array, MutableArrayData};
 use async_trait::async_trait;
-use core::mem;
 use futures::future::join_all;
-use smallvec::SmallVec;
 use std::cmp::{Ordering, Reverse};
 use std::collections::BinaryHeap;
 
@@ -657,6 +654,15 @@ struct LastRowByUniqueKeyExecStream {
 }
 
 impl LastRowByUniqueKeyExecStream {
+    fn row_equals(comparators: &Vec<DynComparator>, a: usize, b: usize) -> bool {
+        for comparator in comparators.iter().rev() {
+            if comparator(a, b) != Ordering::Equal {
+                return false;
+            }
+        }
+        true
+    }
+
     fn keep_only_last_rows_by_key(
         &mut self,
         next_batch: Option<RecordBatch>,
@@ -669,36 +675,33 @@ impl LastRowByUniqueKeyExecStream {
             .iter()
             .map(|k| batch.column(k.index()).clone())
             .collect::<Vec<ArrayRef>>();
-        let mut next_key = SmallVec::new();
-        let mut current_row_key = None;
         let mut requires_filtering = false;
-        for i in 0..num_rows + 1 {
-            if i == num_rows && next_batch.is_none() {
-                builder.append_value(true)?;
-                continue;
-            } else if i == num_rows {
+        let self_column_comparators = key_columns
+            .iter()
+            .map(|c| build_compare(c.as_ref(), c.as_ref()))
+            .collect::<ArrowResult<Vec<_>>>()?;
+        for i in 0..num_rows {
+            let filter_value = if i == num_rows - 1 && next_batch.is_none() {
+                true
+            } else if i == num_rows - 1 {
                 let next_key_columns = self
                     .unique_key
                     .iter()
                     .map(|k| next_batch.as_ref().unwrap().column(k.index()).clone())
                     .collect::<Vec<ArrayRef>>();
-                // TODO replace create_key with special compare with next kernel
-                create_key(next_key_columns.as_slice(), 0, &mut next_key)
-                    .map_err(DataFusionError::into_arrow_external_error)?;
+                let next_column_comparators = key_columns
+                    .iter()
+                    .zip(next_key_columns.iter())
+                    .map(|(c, n)| build_compare(c.as_ref(), n.as_ref()))
+                    .collect::<ArrowResult<Vec<_>>>()?;
+                !Self::row_equals(&next_column_comparators, i, 0)
             } else {
-                create_key(key_columns.as_slice(), i, &mut next_key)
-                    .map_err(DataFusionError::into_arrow_external_error)?;
+                !Self::row_equals(&self_column_comparators, i, i + 1)
+            };
+            if !filter_value {
+                requires_filtering = true;
             }
-            if current_row_key.is_some() {
-                let filter_value = current_row_key.as_ref().unwrap() != &next_key;
-                if !filter_value {
-                    requires_filtering = true;
-                }
-                builder.append_value(filter_value)?;
-            }
-            let mut to_update = SmallVec::new();
-            mem::swap(&mut to_update, &mut next_key);
-            current_row_key = Some(to_update);
+            builder.append_value(filter_value)?;
         }
         self.current_record_batch = next_batch;
         if requires_filtering {
