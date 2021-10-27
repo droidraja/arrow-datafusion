@@ -1172,19 +1172,20 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                 ],
             }),
 
-            SQLExpr::Value(Value::Interval {
-                value,
-                leading_field,
-                leading_precision,
-                last_field,
-                fractional_seconds_precision,
-            }) => self.sql_interval_to_literal(
-                value,
-                leading_field,
-                leading_precision,
-                last_field,
-                fractional_seconds_precision,
-            ),
+            // @todo Disabled because Intervals can be dynamic
+            // SQLExpr::Value(Value::Interval {
+            //     value,
+            //     leading_field,
+            //     leading_precision,
+            //     last_field,
+            //     fractional_seconds_precision,
+            // }) => self.sql_interval_to_literal(
+            //     value,
+            //     leading_field,
+            //     leading_precision,
+            //     last_field,
+            //     fractional_seconds_precision,
+            // ),
 
             SQLExpr::Identifier(ref id) => {
                 if id.value.starts_with('@') {
