@@ -1187,6 +1187,11 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
             //     fractional_seconds_precision,
             // ),
 
+            // @todo Support
+            SQLExpr::Collate { expr, .. } => {
+                self.sql_expr_to_logical_expr(expr, schema)
+            },
+
             SQLExpr::Identifier(ref id) => {
                 if id.value.starts_with('@') {
                     let var_names = vec![id.value.clone()];
@@ -3626,6 +3631,15 @@ mod tests {
         let sql = r#"SELECT person.first_name FROM public.person"#;
         let expected = "Projection: #public.person.first_name\
             \n  TableScan: public.person projection=None";
+        quick_test(sql, expected);
+    }
+
+    #[test]
+    fn select_collate_cubesql() {
+        let sql = r#"SELECT person.first_name FROM public.person WHERE first_name collate utf8_general_ci = 'dmitry'"#;
+        let expected = "Projection: #public.person.first_name\
+        \n  Filter: #public.person.first_name = Utf8(\"dmitry\")\
+        \n    TableScan: public.person projection=None";
         quick_test(sql, expected);
     }
 }
