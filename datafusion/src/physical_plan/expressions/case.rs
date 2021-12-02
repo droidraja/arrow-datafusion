@@ -20,7 +20,7 @@ use std::{any::Any, sync::Arc};
 use crate::error::{DataFusionError, Result};
 use crate::physical_plan::{ColumnarValue, PhysicalExpr};
 use arrow::array::{self, *};
-use arrow::compute::{eq, eq_utf8};
+use arrow::compute::{cast, eq, eq_utf8};
 use arrow::datatypes::{DataType, Schema};
 use arrow::record_batch::RecordBatch;
 
@@ -322,7 +322,12 @@ impl CaseExpr {
 
         // start with the else condition, or nulls
         let mut current_value: Option<ArrayRef> = if let Some(e) = &self.else_expr {
-            Some(e.evaluate(batch)?.into_array(batch.num_rows()))
+            let arr = e.evaluate(batch)?.into_array(batch.num_rows());
+            if arr.data_type().ne(&return_type) {
+                Some(cast(&arr, &return_type).unwrap())
+            } else {
+                Some(arr)
+            }
         } else {
             Some(new_null_array(&return_type, batch.num_rows()))
         };
@@ -336,6 +341,12 @@ impl CaseExpr {
 
             let then_value = self.when_then_expr[i].1.evaluate(batch)?;
             let then_value = then_value.into_array(batch.num_rows());
+
+            let then_value = if then_value.data_type().ne(&return_type) {
+                cast(&then_value, &return_type).unwrap()
+            } else {
+                then_value
+            };
 
             // build boolean array representing which rows match the "when" value
             let when_match = array_equals(&base_type, when_value, base_value.clone())?;
@@ -363,7 +374,12 @@ impl CaseExpr {
 
         // start with the else condition, or nulls
         let mut current_value: Option<ArrayRef> = if let Some(e) = &self.else_expr {
-            Some(e.evaluate(batch)?.into_array(batch.num_rows()))
+            let arr = e.evaluate(batch)?.into_array(batch.num_rows());
+            if arr.data_type().ne(&return_type) {
+                Some(cast(&arr, &return_type).unwrap())
+            } else {
+                Some(arr)
+            }
         } else {
             Some(new_null_array(&return_type, batch.num_rows()))
         };
@@ -485,6 +501,35 @@ mod tests {
     }
 
     #[test]
+    fn case_with_expr_different_types() -> Result<()> {
+        let batch = case_test_batch()?;
+        let schema = batch.schema();
+
+        // CASE a WHEN 'foo' THEN 123 WHEN 'bar' THEN 456 END
+        let when1 = lit(ScalarValue::Utf8(Some("foo".to_string())));
+        let then1 = lit(ScalarValue::Int32(Some(123)));
+        let when2 = lit(ScalarValue::Utf8(Some("bar".to_string())));
+        let then2 = lit(ScalarValue::Int64(Some(456)));
+
+        let expr = case(
+            Some(col("a", &schema)?),
+            &[(when1, then1), (when2, then2)],
+            None,
+        )?;
+        let result = expr.evaluate(&batch)?.into_array(batch.num_rows());
+        let result = result
+            .as_any()
+            .downcast_ref::<Int32Array>()
+            .expect("failed to downcast to Int32Array");
+
+        let expected = &Int32Array::from(vec![Some(123), None, None, Some(456)]);
+
+        assert_eq!(expected, result);
+
+        Ok(())
+    }
+
+    #[test]
     fn case_with_expr_else() -> Result<()> {
         let batch = case_test_batch()?;
         let schema = batch.schema();
@@ -509,6 +554,38 @@ mod tests {
 
         let expected =
             &Int32Array::from(vec![Some(123), Some(999), Some(999), Some(456)]);
+
+        assert_eq!(expected, result);
+
+        Ok(())
+    }
+
+
+    #[test]
+    fn case_with_expr_else_different_types() -> Result<()> {
+        let batch = case_test_batch()?;
+        let schema = batch.schema();
+
+        // CASE a WHEN 'foo' THEN 123 WHEN 'bar' THEN 456 ELSE 999 END
+        let when1 = lit(ScalarValue::Utf8(Some("foo".to_string())));
+        let then1 = lit(ScalarValue::Int64(Some(123)));
+        let when2 = lit(ScalarValue::Utf8(Some("bar".to_string())));
+        let then2 = lit(ScalarValue::Int32(Some(456)));
+        let else_value = lit(ScalarValue::Int32(Some(999)));
+
+        let expr = case(
+            Some(col("a", &schema)?),
+            &[(when1, then1), (when2, then2)],
+            Some(else_value),
+        )?;
+        let result = expr.evaluate(&batch)?.into_array(batch.num_rows());
+        let result = result
+            .as_any()
+            .downcast_ref::<Int64Array>()
+            .expect("failed to downcast to Int64Array");
+
+        let expected =
+            &Int64Array::from(vec![Some(123), Some(999), Some(999), Some(456)]);
 
         assert_eq!(expected, result);
 
