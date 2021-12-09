@@ -1125,6 +1125,12 @@ impl ScalarValue {
             DataType::Timestamp(TimeUnit::Second, _) => {
                 typed_cast!(array, index, TimestampSecondArray, TimestampSecond)
             }
+            DataType::Interval(IntervalUnit::DayTime) => {
+                typed_cast!(array, index, IntervalDayTimeArray, IntervalDayTime)
+            }
+            DataType::Interval(IntervalUnit::YearMonth) => {
+                typed_cast!(array, index, IntervalYearMonthArray, IntervalYearMonth)
+            }
             DataType::Timestamp(TimeUnit::Millisecond, _) => {
                 typed_cast!(
                     array,
