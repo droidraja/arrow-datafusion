@@ -1330,6 +1330,12 @@ impl ScalarValue {
                     tz_opt
                 )
             }
+            DataType::Interval(IntervalUnit::DayTime) => {
+                typed_cast!(array, index, IntervalDayTimeArray, IntervalDayTime)
+            }
+            DataType::Interval(IntervalUnit::YearMonth) => {
+                typed_cast!(array, index, IntervalYearMonthArray, IntervalYearMonth)
+            }
             DataType::Timestamp(TimeUnit::Millisecond, tz_opt) => {
                 typed_cast_tz!(
                     array,
