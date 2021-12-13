@@ -50,8 +50,8 @@ avro = ["avro-rs", "num-traits"]
 [dependencies]
 ahash = "0.7"
 hashbrown = { version = "0.11", features = ["raw"] }
-arrow = { version = "6.0.0", features = ["prettyprint"] }
-parquet = { version = "6.0.0", features = ["arrow"] }
+arrow = { git = "https://github.com/cube-js/arrow-rs.git", rev = "114eb35848ebbb70cbe21d77c488e8320a1de7b5", features = ["prettyprint"] }
+parquet = { git = "https://github.com/cube-js/arrow-rs.git", rev = "114eb35848ebbb70cbe21d77c488e8320a1de7b5", features = ["arrow"] }
 sqlparser = { git = 'https://github.com/cube-js/sqlparser-rs.git', rev = "82675c4c350fb90c8fdbd7e897adcd95e24e7735" }
 paste = "^1.0"
 num_cpus = "1.13.0"
