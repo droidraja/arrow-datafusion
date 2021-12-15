@@ -451,11 +451,13 @@ pub fn substr<T: StringOffsetSizeTrait>(args: &[ArrayRef]) -> Result<ArrayRef> {
                 .map(|((string, start), count)| match (string, start, count) {
                     (Some(string), Some(start), Some(count)) => {
                         if count < 0 {
-                            Err(DataFusionError::Execution(format!(
-                                "negative substring length not allowed: substr(<str>, {}, {})",
-                                start,
-                                count
-                            )))
+                            // Err(DataFusionError::Execution(format!(
+                            //     "negative substring length not allowed, substr({}, {}, {})",
+                            //     string,
+                            //     start,
+                            //     count
+                            // )))
+                            Ok(Some("".to_string()))
                         } else {
                             let graphemes = string.graphemes(true).collect::<Vec<&str>>();
                             let (start_pos, end_pos) = if start <= 0 {

@@ -3237,21 +3237,22 @@ mod tests {
             Utf8,
             StringArray
         );
-        #[cfg(feature = "unicode_expressions")]
-        test_function!(
-            Substr,
-            &[
-                lit(ScalarValue::Utf8(Some("alphabet".to_string()))),
-                lit(ScalarValue::Int64(Some(1))),
-                lit(ScalarValue::Int64(Some(-1))),
-            ],
-            Err(DataFusionError::Execution(
-                "negative substring length not allowed: substr(<str>, 1, -1)".to_string(),
-            )),
-            &str,
-            Utf8,
-            StringArray
-        );
+        // Disabled, Because behaivour was changed to be similar with MySQL
+        // #[cfg(feature = "unicode_expressions")]
+        // test_function!(
+        //     Substr,
+        //     &[
+        //         lit(ScalarValue::Utf8(Some("alphabet".to_string()))),
+        //         lit(ScalarValue::Int64(Some(1))),
+        //         lit(ScalarValue::Int64(Some(-1))),
+        //     ],
+        //     Err(DataFusionError::Execution(
+        //         "negative substring length not allowed: substr(<str>, 1, -1)".to_string(),
+        //     )),
+        //     &str,
+        //     Utf8,
+        //     StringArray
+        // );
         #[cfg(feature = "unicode_expressions")]
         test_function!(
             Substr,
