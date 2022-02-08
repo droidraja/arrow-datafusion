@@ -181,6 +181,21 @@ pub fn make_now(
     }
 }
 
+/// Create an implementation of `utc_timestamp()` that always returns the
+/// specified timestamp.
+///
+/// It's the same as now but as timestamp instead of string (for MySQL)
+pub fn make_utc_timestamp(
+    now_ts: DateTime<Utc>,
+) -> impl Fn(&[ColumnarValue]) -> Result<ColumnarValue> {
+    let now_ts = Some(now_ts.timestamp_nanos());
+    move |_arg| {
+        Ok(ColumnarValue::Scalar(ScalarValue::TimestampNanosecond(
+            now_ts,
+        )))
+    }
+}
+
 fn date_trunc_single(granularity: &str, value: i64) -> Result<i64> {
     let value = timestamp_ns_to_datetime(value).with_nanosecond(0);
     let value = match granularity {

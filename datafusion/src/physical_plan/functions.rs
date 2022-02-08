@@ -293,6 +293,8 @@ pub enum BuiltinScalarFunction {
     ToTimestampSeconds,
     ///now
     Now,
+    ///utc_timestamp
+    UtcTimestamp,
     /// translate
     Translate,
     /// trim
@@ -309,7 +311,9 @@ impl BuiltinScalarFunction {
     fn supports_zero_argument(&self) -> bool {
         matches!(
             self,
-            BuiltinScalarFunction::Random | BuiltinScalarFunction::Now
+            BuiltinScalarFunction::Random
+                | BuiltinScalarFunction::Now
+                | BuiltinScalarFunction::UtcTimestamp
         )
     }
     /// Returns the [Volatility] of the builtin function.
@@ -380,6 +384,7 @@ impl BuiltinScalarFunction {
 
             //Stable builtin functions
             BuiltinScalarFunction::Now => Volatility::Stable,
+            BuiltinScalarFunction::UtcTimestamp => Volatility::Stable,
 
             //Volatile builtin functions
             BuiltinScalarFunction::Random => Volatility::Volatile,
@@ -462,6 +467,7 @@ impl FromStr for BuiltinScalarFunction {
             "to_timestamp_micros" => BuiltinScalarFunction::ToTimestampMicros,
             "to_timestamp_seconds" => BuiltinScalarFunction::ToTimestampSeconds,
             "now" => BuiltinScalarFunction::Now,
+            "utc_timestamp" => BuiltinScalarFunction::UtcTimestamp,
             "translate" => BuiltinScalarFunction::Translate,
             "trim" => BuiltinScalarFunction::Trim,
             "upper" => BuiltinScalarFunction::Upper,
@@ -586,6 +592,9 @@ pub fn return_type(
             Ok(DataType::Timestamp(TimeUnit::Second, None))
         }
         BuiltinScalarFunction::Now => Ok(DataType::Timestamp(TimeUnit::Nanosecond, None)),
+        BuiltinScalarFunction::UtcTimestamp => {
+            Ok(DataType::Timestamp(TimeUnit::Nanosecond, None))
+        }
         BuiltinScalarFunction::Translate => utf8_to_str_type(&arg_types[0], "translate"),
         BuiltinScalarFunction::Trim => utf8_to_str_type(&arg_types[0], "trim"),
         BuiltinScalarFunction::Upper => utf8_to_str_type(&arg_types[0], "upper"),
@@ -796,6 +805,12 @@ pub fn create_physical_fun(
         BuiltinScalarFunction::Now => {
             // bind value for now at plan time
             Arc::new(datetime_expressions::make_now(
+                ctx_state.execution_props.query_execution_start_time,
+            ))
+        }
+        BuiltinScalarFunction::UtcTimestamp => {
+            // bind value for utc_timestamp at plan time
+            Arc::new(datetime_expressions::make_utc_timestamp(
                 ctx_state.execution_props.query_execution_start_time,
             ))
         }

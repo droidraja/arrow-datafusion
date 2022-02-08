@@ -560,7 +560,6 @@ mod tests {
         Ok(())
     }
 
-
     #[test]
     fn case_with_expr_else_different_types() -> Result<()> {
         let batch = case_test_batch()?;

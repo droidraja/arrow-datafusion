@@ -1188,9 +1188,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
             // ),
 
             // @todo Support
-            SQLExpr::Collate { expr, .. } => {
-                self.sql_expr_to_logical_expr(expr, schema)
-            },
+            SQLExpr::Collate { expr, .. } => self.sql_expr_to_logical_expr(expr, schema),
 
             SQLExpr::Identifier(ref id) => {
                 if id.value.starts_with('@') {
@@ -1344,26 +1342,36 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                 ref right,
             } => self.parse_sql_binary_op(left, op, right, schema),
 
-            SQLExpr::Substring { expr, substring_from, substring_for } => {
+            SQLExpr::Substring {
+                expr,
+                substring_from,
+                substring_for,
+            } => {
                 let arg = self.sql_expr_to_logical_expr(expr, schema)?;
                 let args = match (substring_from, substring_for) {
                     (Some(from_expr), Some(for_expr)) => {
-                        let from_logic = self.sql_expr_to_logical_expr(from_expr, schema)?;
-                        let for_logic = self.sql_expr_to_logical_expr(for_expr, schema)?;
+                        let from_logic =
+                            self.sql_expr_to_logical_expr(from_expr, schema)?;
+                        let for_logic =
+                            self.sql_expr_to_logical_expr(for_expr, schema)?;
                         vec![arg, from_logic, for_logic]
                     }
                     (Some(from_expr), None) => {
-                        let from_logic = self.sql_expr_to_logical_expr(from_expr, schema)?;
+                        let from_logic =
+                            self.sql_expr_to_logical_expr(from_expr, schema)?;
                         vec![arg, from_logic]
-                    },
+                    }
                     _ => {
                         return Err(DataFusionError::Plan(format!(
                             "Substring without for/from is not valid {:?}",
                             sql
                         )))
-                    },
+                    }
                 };
-                Ok(Expr::ScalarFunction { fun: functions::BuiltinScalarFunction::Substr, args })
+                Ok(Expr::ScalarFunction {
+                    fun: functions::BuiltinScalarFunction::Substr,
+                    args,
+                })
             }
 
             SQLExpr::Trim { expr, trim_where } => {
