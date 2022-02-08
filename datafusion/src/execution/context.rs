@@ -1052,6 +1052,10 @@ impl ExecutionProps {
         self.query_execution_start_time = chrono::Utc::now();
         &*self
     }
+
+    pub fn query_execution_start_time_ref(&self) -> &DateTime<Utc> {
+        &self.query_execution_start_time
+    }
 }
 
 impl ExecutionContextState {
