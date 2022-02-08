@@ -1424,9 +1424,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
             // ),
 
             /// @todo Support
-            SQLExpr::Collate { expr, .. } => {
-                self.sql_expr_to_logical_expr(*expr, schema)
-            },
+            SQLExpr::Collate { expr, .. } => self.sql_expr_to_logical_expr(*expr, schema),
 
             SQLExpr::Identifier(id) => {
                 if id.value.starts_with('@') {
@@ -1649,7 +1647,6 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                             substring_from: None,
                             substring_for: None,
                         };
-
                         return Err(DataFusionError::Plan(format!(
                             "Substring without for/from is not valid {:?}",
                             orig_sql

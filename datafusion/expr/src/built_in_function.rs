@@ -146,6 +146,7 @@ pub enum BuiltinScalarFunction {
     ToTimestampSeconds,
     ///now
     Now,
+    UtcTimestamp,
     /// translate
     Translate,
     /// trim
@@ -162,7 +163,7 @@ impl BuiltinScalarFunction {
     pub fn supports_zero_argument(&self) -> bool {
         matches!(
             self,
-            BuiltinScalarFunction::Random | BuiltinScalarFunction::Now
+            BuiltinScalarFunction::Random | BuiltinScalarFunction::Now | BuiltinScalarFunction::UtcTimestamp
         )
     }
     /// Returns the [Volatility] of the builtin function.
@@ -233,6 +234,7 @@ impl BuiltinScalarFunction {
 
             // Stable builtin functions
             BuiltinScalarFunction::Now => Volatility::Stable,
+            BuiltinScalarFunction::UtcTimestamp => Volatility::Stable,
 
             // Volatile builtin functions
             BuiltinScalarFunction::Random => Volatility::Volatile,
