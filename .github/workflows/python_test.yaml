@@ -16,7 +16,8 @@
 # under the License.
 
 name: Python test
-on: [push, pull_request]
+# on: [push, pull_request]
+on: []
 
 jobs:
   test:
