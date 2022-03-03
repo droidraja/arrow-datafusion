@@ -162,7 +162,6 @@ impl ParquetExec {
         max_concurrency: usize,
         limit: Option<usize>,
     ) -> Result<Self> {
-        println!("try_from_path {:#?}", filenames);
         debug!("Creating ParquetExec, filenames: {:?}, projection {:?}, predicate: {:?}, limit: {:?}",
                filenames, projection, predicate, limit);
         // build a list of Parquet partitions with statistics and gather all unique schemas
@@ -667,8 +666,6 @@ fn read_files(
     response_tx: Sender<ArrowResult<RecordBatch>>,
     limit: Option<usize>,
 ) -> Result<()> {
-    println!("read_files {:#?}", filenames);
-
     let mut total_rows = 0;
     'outer: for filename in filenames {
         let file = File::open(&filename)?;
