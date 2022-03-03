@@ -31,4 +31,5 @@ clap = "2.33"
 rustyline = "8.0"
 tokio = { version = "1.0", features = ["macros", "rt", "rt-multi-thread", "sync"] }
 datafusion = { path = "../datafusion" }
-arrow = { git = "https://github.com/cube-js/arrow-rs.git", branch = "cube", features = ["prettyprint"] }
+# arrow = { git = "https://github.com/cube-js/arrow-rs.git", branch = "cube", features = ["prettyprint"] }
+arrow = { path = "//Users/cristipp/work/arrow-rs/arrow", features = ["prettyprint"] }
