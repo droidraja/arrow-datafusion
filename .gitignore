@@ -84,6 +84,7 @@ cpp/Brewfile.lock.json
 # Rust
 target
 Cargo.lock
+.cargo/config.toml
 
 rusty-tags.vi
 .history

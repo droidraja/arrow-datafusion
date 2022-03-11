@@ -19,7 +19,7 @@
 
 use std::fmt;
 use std::fs::File;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 use std::{any::Any, convert::TryInto};
 
@@ -43,11 +43,7 @@ use arrow::{
 };
 use hashbrown::HashMap;
 use log::debug;
-use parquet::file::{
-    metadata::RowGroupMetaData,
-    reader::{FileReader, SerializedFileReader},
-    statistics::Statistics as ParquetStatistics,
-};
+use parquet::file::{footer, metadata::RowGroupMetaData, reader::{FileReader, SerializedFileReader}, statistics::Statistics as ParquetStatistics};
 
 use fmt::Debug;
 use parquet::arrow::{ArrowReader, ParquetFileArrowReader};
@@ -58,6 +54,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use crate::datasource::datasource::{ColumnStatistics, Statistics};
 use async_trait::async_trait;
 use futures::stream::{Stream, StreamExt};
+use parquet::file::metadata::ParquetMetaData;
 
 use super::SQLMetric;
 
@@ -78,6 +75,8 @@ pub struct ParquetExec {
     metrics: ParquetExecMetrics,
     /// Optional predicate builder
     predicate_builder: Option<PruningPredicate>,
+    /// Creates readers for parquet files.
+    parquet_reader_factory: Arc<ParquetReaderFactory>,
     /// Optional limit of the number of rows
     limit: Option<usize>,
 }
@@ -115,6 +114,38 @@ struct ParquetPartitionMetrics {
     pub predicate_evaluation_errors: Arc<SQLMetric>,
     /// Number of row groups pruned using
     pub row_groups_pruned: Arc<SQLMetric>,
+}
+
+pub struct ParquetReaderFactory {
+    cache: Mutex<lru::LruCache<String, parquet::errors::Result<Arc<ParquetMetaData>>>>
+}
+
+impl ParquetReaderFactory {
+    pub fn new(parquet_metadata_cache_capacity: usize) -> Arc<ParquetReaderFactory> {
+        Arc::new(ParquetReaderFactory {
+            cache: Mutex::new(lru::LruCache::new(parquet_metadata_cache_capacity)),
+        })
+    }
+
+    pub fn reader(&self, filename: &str) -> Result<ParquetFileArrowReader> {
+        let file = File::open(filename)?;
+        {
+            let mut cache = self.cache.lock().unwrap();
+            let metadata = cache.get(&filename.to_string());
+            if let Some(metadata) = metadata {
+                let file_reader = Arc::new(SerializedFileReader::new_with_metadata(file, metadata?)?);
+                return Ok(ParquetFileArrowReader::new(file_reader));
+            }
+        }
+        let metadata = footer::parse_metadata(&file).map(|m| Arc::new(m));
+        {
+            let mut cache = self.cache.lock().unwrap();
+            cache.put(filename.to_string(), metadata.clone());
+        }
+        let file = File::open(filename)?;
+        let file_reader = Arc::new(SerializedFileReader::new_with_metadata(file, metadata?)?);
+        Ok(ParquetFileArrowReader::new(file_reader))
+    }
 }
 
 impl ParquetExec {
@@ -161,6 +192,7 @@ impl ParquetExec {
         batch_size: usize,
         max_concurrency: usize,
         limit: Option<usize>,
+        parquet_reader_factory: Arc<ParquetReaderFactory>,
     ) -> Result<Self> {
         debug!("Creating ParquetExec, filenames: {:?}, projection {:?}, predicate: {:?}, limit: {:?}",
                filenames, projection, predicate, limit);
@@ -180,9 +212,7 @@ impl ParquetExec {
             let mut total_files = 0;
             for filename in &filenames {
                 total_files += 1;
-                let file = File::open(filename)?;
-                let file_reader = Arc::new(SerializedFileReader::new(file)?);
-                let mut arrow_reader = ParquetFileArrowReader::new(file_reader);
+                let mut arrow_reader = parquet_reader_factory.reader(filename.as_str())?;
                 let meta_data = arrow_reader.get_metadata();
                 // collect all the unique schemas in this data set
                 let schema = arrow_reader.get_schema()?;
@@ -676,7 +706,7 @@ fn read_files(
                 metrics.clone(),
                 file_reader.metadata().row_groups(),
             );
-            file_reader.filter_row_groups(&row_group_predicate);
+            file_reader = file_reader.filter_row_groups(&row_group_predicate);
         }
         let mut arrow_reader = ParquetFileArrowReader::new(Arc::new(file_reader));
         let mut batch_reader = arrow_reader
