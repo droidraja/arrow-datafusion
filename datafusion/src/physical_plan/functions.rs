@@ -55,6 +55,7 @@ use arrow::{
 use fmt::{Debug, Formatter};
 use std::convert::From;
 use std::{any::Any, fmt, str::FromStr, sync::Arc};
+use arrow::datatypes::IntervalUnit;
 
 /// A function's type signature, which defines the function's supported argument types.
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
@@ -291,6 +292,10 @@ pub enum BuiltinScalarFunction {
     ToTimestampMicros,
     /// to_timestamp_seconds
     ToTimestampSeconds,
+    /// to_day_interval
+    ToDayInterval,
+    /// to_month_interval
+    ToMonthInterval,
     ///now
     Now,
     ///utc_timestamp
@@ -377,6 +382,8 @@ impl BuiltinScalarFunction {
             BuiltinScalarFunction::ToTimestampMillis => Volatility::Immutable,
             BuiltinScalarFunction::ToTimestampMicros => Volatility::Immutable,
             BuiltinScalarFunction::ToTimestampSeconds => Volatility::Immutable,
+            BuiltinScalarFunction::ToDayInterval => Volatility::Immutable,
+            BuiltinScalarFunction::ToMonthInterval => Volatility::Immutable,
             BuiltinScalarFunction::Translate => Volatility::Immutable,
             BuiltinScalarFunction::Trim => Volatility::Immutable,
             BuiltinScalarFunction::Upper => Volatility::Immutable,
@@ -466,6 +473,8 @@ impl FromStr for BuiltinScalarFunction {
             "to_timestamp_millis" => BuiltinScalarFunction::ToTimestampMillis,
             "to_timestamp_micros" => BuiltinScalarFunction::ToTimestampMicros,
             "to_timestamp_seconds" => BuiltinScalarFunction::ToTimestampSeconds,
+            "to_day_interval" => BuiltinScalarFunction::ToDayInterval,
+            "to_month_interval" => BuiltinScalarFunction::ToDayInterval,
             "now" => BuiltinScalarFunction::Now,
             "utc_timestamp" => BuiltinScalarFunction::UtcTimestamp,
             "translate" => BuiltinScalarFunction::Translate,
@@ -590,6 +599,12 @@ pub fn return_type(
         }
         BuiltinScalarFunction::ToTimestampSeconds => {
             Ok(DataType::Timestamp(TimeUnit::Second, None))
+        }
+        BuiltinScalarFunction::ToDayInterval => {
+            Ok(DataType::Interval(IntervalUnit::DayTime))
+        }
+        BuiltinScalarFunction::ToMonthInterval => {
+            Ok(DataType::Interval(IntervalUnit::YearMonth))
         }
         BuiltinScalarFunction::Now => Ok(DataType::Timestamp(TimeUnit::Nanosecond, None)),
         BuiltinScalarFunction::UtcTimestamp => {
@@ -802,6 +817,8 @@ pub fn create_physical_fun(
         }
         BuiltinScalarFunction::DatePart => Arc::new(datetime_expressions::date_part),
         BuiltinScalarFunction::DateTrunc => Arc::new(datetime_expressions::date_trunc),
+        BuiltinScalarFunction::ToDayInterval => Arc::new(datetime_expressions::to_day_interval),
+        BuiltinScalarFunction::ToMonthInterval => Arc::new(datetime_expressions::to_month_interval),
         BuiltinScalarFunction::Now => {
             // bind value for now at plan time
             Arc::new(datetime_expressions::make_now(
@@ -1373,6 +1390,20 @@ fn signature(fun: &BuiltinScalarFunction) -> Signature {
                 DataType::Timestamp(TimeUnit::Nanosecond, None),
                 DataType::Timestamp(TimeUnit::Microsecond, None),
                 DataType::Timestamp(TimeUnit::Millisecond, None),
+            ],
+            fun.volatility(),
+        ),
+        BuiltinScalarFunction::ToDayInterval => Signature::exact(
+            vec![
+                DataType::Int64,
+                DataType::Utf8,
+            ],
+            fun.volatility(),
+        ),
+        BuiltinScalarFunction::ToMonthInterval => Signature::exact(
+            vec![
+                DataType::Int64,
+                DataType::Utf8,
             ],
             fun.volatility(),
         ),

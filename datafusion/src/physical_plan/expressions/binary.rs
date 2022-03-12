@@ -48,6 +48,7 @@ use crate::scalar::ScalarValue;
 use super::coercion::{
     eq_coercion, like_coercion, numerical_coercion, order_coercion, string_coercion,
 };
+use crate::physical_plan::expressions::coercion::interval_coercion;
 
 /// Binary expression
 #[derive(Debug)]
@@ -453,8 +454,8 @@ fn common_binary_type(
         // for math expressions, the final value of the coercion is also the return type
         // because coercion favours higher information types
         Operator::Plus
-        | Operator::Minus
-        | Operator::Modulo
+        | Operator::Minus => numerical_coercion(lhs_type, rhs_type).or_else(|| interval_coercion(lhs_type, rhs_type)),
+        Operator::Modulo
         | Operator::Divide
         | Operator::Multiply => numerical_coercion(lhs_type, rhs_type),
         Operator::RegexMatch

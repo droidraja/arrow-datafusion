@@ -162,6 +162,19 @@ pub fn numerical_coercion(lhs_type: &DataType, rhs_type: &DataType) -> Option<Da
     }
 }
 
+/// Coercion rule for interval
+pub fn interval_coercion(lhs_type: &DataType, rhs_type: &DataType) -> Option<DataType> {
+    use arrow::datatypes::DataType::*;
+
+    // these are ordered from most informative to least informative so
+    // that the coercion removes the least amount of information
+    match (lhs_type, rhs_type) {
+        (Timestamp(unit, zone), Interval(_)) => Some(Timestamp(unit.clone(), zone.clone())),
+        (Interval(_), Timestamp(unit, zone)) => Some(Timestamp(unit.clone(), zone.clone())),
+        _ => None,
+    }
+}
+
 // coercion rules for equality operations. This is a superset of all numerical coercion rules.
 pub fn eq_coercion(lhs_type: &DataType, rhs_type: &DataType) -> Option<DataType> {
     if lhs_type == rhs_type {

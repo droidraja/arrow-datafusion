@@ -1053,6 +1053,7 @@ impl ExecutionProps {
         &*self
     }
 
+    /// Get query started timestamp
     pub fn query_execution_start_time_ref(&self) -> &DateTime<Utc> {
         &self.query_execution_start_time
     }
