@@ -1068,28 +1068,6 @@ impl Stream for HashAggregateStream {
     ) -> Poll<Option<Self::Item>> {
         let mut this = self.project();
         return Pin::new(&mut this.stream).poll_next(cx);
-
-        // if self.finished {
-        //     return Poll::Ready(None);
-        // }
-        //
-        // // is the output ready?
-        // let output_poll = this.output.poll(cx);
-        //
-        // match output_poll {
-        //     Poll::Ready(result) => {
-        //         *this.finished = true;
-        //
-        //         // check for error in receiving channel and unwrap actual result
-        //         let result = match result {
-        //             Err(e) => Err(ArrowError::ExternalError(Box::new(e))), // error receiving
-        //             Ok(result) => result,
-        //         };
-        //
-        //         Poll::Ready(Some(result))
-        //     }
-        //     Poll::Pending => Poll::Pending,
-        // }
     }
 }
 
