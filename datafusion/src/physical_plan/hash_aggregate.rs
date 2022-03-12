@@ -23,10 +23,7 @@ use std::task::{Context, Poll};
 use std::vec;
 
 use ahash::RandomState;
-use futures::{
-    stream::{Stream, StreamExt},
-    Future,
-};
+use futures::{stream::{Stream, StreamExt}, Future};
 
 use crate::cube_match_scalar;
 use crate::error::{DataFusionError, Result};
@@ -82,6 +79,8 @@ use compute::cast;
 use smallvec::smallvec;
 use smallvec::SmallVec;
 use std::convert::TryFrom;
+use async_stream::stream;
+use std::pin::Pin;
 
 /// Hash aggregate modes
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -975,8 +974,7 @@ pin_project! {
     pub struct HashAggregateStream {
         schema: SchemaRef,
         #[pin]
-        output: futures::channel::oneshot::Receiver<ArrowResult<RecordBatch>>,
-        finished: bool,
+        stream: Pin<Box<dyn Stream<Item = ArrowResult<RecordBatch>> + Send>>,
     }
 }
 
@@ -1014,20 +1012,15 @@ impl HashAggregateStream {
         aggr_expr: Vec<Arc<dyn AggregateExpr>>,
         input: SendableRecordBatchStream,
     ) -> Self {
-        let (tx, rx) = futures::channel::oneshot::channel();
-
         let schema_clone = schema.clone();
-        let task = async move {
-            let result =
-                compute_hash_aggregate(mode, schema_clone, aggr_expr, input).await;
-            tx.send(result)
+        let stream = stream! {
+            let result = compute_hash_aggregate(mode, schema_clone, aggr_expr, input).await;
+            yield result
         };
-        cube_ext::spawn(task);
 
         Self {
             schema,
-            output: rx,
-            finished: false,
+            stream: stream.boxed(),
         }
     }
 }
@@ -1073,28 +1066,30 @@ impl Stream for HashAggregateStream {
         self: std::pin::Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Option<Self::Item>> {
-        if self.finished {
-            return Poll::Ready(None);
-        }
+        let mut this = self.project();
+        return Pin::new(&mut this.stream).poll_next(cx);
 
-        // is the output ready?
-        let this = self.project();
-        let output_poll = this.output.poll(cx);
-
-        match output_poll {
-            Poll::Ready(result) => {
-                *this.finished = true;
-
-                // check for error in receiving channel and unwrap actual result
-                let result = match result {
-                    Err(e) => Err(ArrowError::ExternalError(Box::new(e))), // error receiving
-                    Ok(result) => result,
-                };
-
-                Poll::Ready(Some(result))
-            }
-            Poll::Pending => Poll::Pending,
-        }
+        // if self.finished {
+        //     return Poll::Ready(None);
+        // }
+        //
+        // // is the output ready?
+        // let output_poll = this.output.poll(cx);
+        //
+        // match output_poll {
+        //     Poll::Ready(result) => {
+        //         *this.finished = true;
+        //
+        //         // check for error in receiving channel and unwrap actual result
+        //         let result = match result {
+        //             Err(e) => Err(ArrowError::ExternalError(Box::new(e))), // error receiving
+        //             Ok(result) => result,
+        //         };
+        //
+        //         Poll::Ready(Some(result))
+        //     }
+        //     Poll::Pending => Poll::Pending,
+        // }
     }
 }
 
