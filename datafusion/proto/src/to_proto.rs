@@ -1026,9 +1026,12 @@ impl TryFrom<&BuiltinScalarFunction> for protobuf::ScalarFunction {
             BuiltinScalarFunction::ToTimestampMicros => Self::ToTimestampMicros,
             BuiltinScalarFunction::ToTimestampSeconds => Self::ToTimestampSeconds,
             BuiltinScalarFunction::Now => Self::Now,
-            BuiltinScalarFunction::UtcTimestamp => Self::UtcTimestamp,
             BuiltinScalarFunction::Translate => Self::Translate,
             BuiltinScalarFunction::RegexpMatch => Self::RegexpMatch,
+            // Cube SQL
+            BuiltinScalarFunction::UtcTimestamp => Self::UtcTimestamp,
+            BuiltinScalarFunction::ToDayInterval => Self::ToDayInterval,
+            BuiltinScalarFunction::ToMonthInterval => Self::ToMonthInterval,
         };
 
         Ok(scalar_function)

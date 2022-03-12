@@ -183,7 +183,10 @@ enum ScalarFunction {
   Translate=60;
   Trim=61;
   Upper=62;
-  UtcTimestamp=63;
+  // Cubesql
+  UtcTimestamp=101;
+  ToDayInterval=102;
+  ToMonthInterval=103;
 }
 
 message ScalarFunctionNode {

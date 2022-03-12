@@ -68,6 +68,7 @@ use super::{
     },
 };
 use crate::logical_plan::builder::project_with_alias;
+use crate::physical_plan::functions::BuiltinScalarFunction;
 use crate::logical_plan::plan::{Analyze, Explain};
 
 /// The ContextProvider trait allows the query planner to obtain meta-data about tables and
@@ -1408,22 +1409,56 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                 ],
             }),
 
-            // @todo Disabled because Intervals can be dynamic
-            // SQLExpr::Value(Value::Interval {
-            //     value,
-            //     leading_field,
-            //     leading_precision,
-            //     last_field,
-            //     fractional_seconds_precision,
-            // }) => self.sql_interval_to_literal(
-            //     value,
-            //     leading_field,
-            //     leading_precision,
-            //     last_field,
-            //     fractional_seconds_precision,
-            // ),
+            SQLExpr::Value(Value::Interval {
+                value,
+                leading_field,
+                leading_precision,
+                last_field,
+                fractional_seconds_precision,
+            }) => match *value {
+                SQLExpr::Value(Value::Number(value, _)) => {
+                    self.sql_interval_to_literal(
+                        value,
+                        leading_field,
+                        leading_precision,
+                        last_field,
+                        fractional_seconds_precision,
+                    )
+                }
+                SQLExpr::Value(Value::SingleQuotedString(value)) => {
+                    self.sql_interval_to_literal(
+                        value,
+                        leading_field,
+                        leading_precision,
+                        last_field,
+                        fractional_seconds_precision,
+                    )
+                }
+                expr => {
+                    let unit = leading_field
+                        .as_ref()
+                        .map(|dt| dt.to_string())
+                        .unwrap_or_else(|| "second".to_string());
 
-            /// @todo Support
+                    let fun = if let Some(leading_field) = leading_field {
+                        match leading_field {
+                            DateTimeField::Year => BuiltinScalarFunction::ToMonthInterval,
+                            DateTimeField::Month => BuiltinScalarFunction::ToMonthInterval,
+                            DateTimeField::Quarter => BuiltinScalarFunction::ToMonthInterval,
+                            _ => BuiltinScalarFunction::ToDayInterval,
+                        }
+                    } else {
+                        BuiltinScalarFunction::ToDayInterval
+                    };
+
+                    Ok(Expr::ScalarFunction {
+                        fun,
+                        args: vec![self.sql_expr_to_logical_expr(expr, schema)?, Expr::Literal(ScalarValue::Utf8(Some(unit.to_lowercase())))]
+                    })
+                }
+            },
+
+            // @todo Support
             SQLExpr::Collate { expr, .. } => self.sql_expr_to_logical_expr(*expr, schema),
 
             SQLExpr::Identifier(id) => {
@@ -1920,6 +1955,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
 
             match interval_type.to_lowercase().as_str() {
                 "year" => Ok(align_interval_parts(interval_period * 12_f32, 0.0, 0.0)),
+                "quarter" => Ok(align_interval_parts(interval_period * 3_f32, 0.0, 0.0)),
                 "month" => Ok(align_interval_parts(interval_period, 0.0, 0.0)),
                 "day" | "days" => Ok(align_interval_parts(0.0, interval_period, 0.0)),
                 "hour" | "hours" => {

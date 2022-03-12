@@ -54,6 +54,7 @@ use datafusion_physical_expr::datetime_expressions;
 use datafusion_physical_expr::math_expressions;
 use datafusion_physical_expr::string_expressions;
 use std::sync::Arc;
+use arrow::datatypes::IntervalUnit;
 
 macro_rules! make_utf8_to_return_type {
     ($FUNC:ident, $largeUtf8Type:expr, $utf8Type:expr) => {
@@ -190,6 +191,12 @@ pub fn return_type(
         }
         BuiltinScalarFunction::ToTimestampSeconds => {
             Ok(DataType::Timestamp(TimeUnit::Second, None))
+        }
+        BuiltinScalarFunction::ToDayInterval => {
+            Ok(DataType::Interval(IntervalUnit::DayTime))
+        }
+        BuiltinScalarFunction::ToMonthInterval => {
+            Ok(DataType::Interval(IntervalUnit::YearMonth))
         }
         BuiltinScalarFunction::Now => Ok(DataType::Timestamp(
             TimeUnit::Nanosecond,
@@ -826,6 +833,8 @@ pub fn create_physical_fun(
         }
         BuiltinScalarFunction::DatePart => Arc::new(datetime_expressions::date_part),
         BuiltinScalarFunction::DateTrunc => Arc::new(datetime_expressions::date_trunc),
+        BuiltinScalarFunction::ToDayInterval => Arc::new(datetime_expressions::to_day_interval),
+        BuiltinScalarFunction::ToMonthInterval => Arc::new(datetime_expressions::to_month_interval),
         BuiltinScalarFunction::Now => {
             // bind value for now at plan time
             Arc::new(datetime_expressions::make_now(

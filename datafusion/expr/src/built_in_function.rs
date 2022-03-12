@@ -86,6 +86,8 @@ pub enum BuiltinScalarFunction {
     DatePart,
     /// date_trunc
     DateTrunc,
+    ToDayInterval,
+    ToMonthInterval,
     /// initcap
     InitCap,
     /// left
@@ -227,6 +229,8 @@ impl BuiltinScalarFunction {
             BuiltinScalarFunction::ToTimestampMillis => Volatility::Immutable,
             BuiltinScalarFunction::ToTimestampMicros => Volatility::Immutable,
             BuiltinScalarFunction::ToTimestampSeconds => Volatility::Immutable,
+            BuiltinScalarFunction::ToDayInterval => Volatility::Immutable,
+            BuiltinScalarFunction::ToMonthInterval => Volatility::Immutable,
             BuiltinScalarFunction::Translate => Volatility::Immutable,
             BuiltinScalarFunction::Trim => Volatility::Immutable,
             BuiltinScalarFunction::Upper => Volatility::Immutable,
@@ -316,6 +320,8 @@ impl FromStr for BuiltinScalarFunction {
             "to_timestamp_millis" => BuiltinScalarFunction::ToTimestampMillis,
             "to_timestamp_micros" => BuiltinScalarFunction::ToTimestampMicros,
             "to_timestamp_seconds" => BuiltinScalarFunction::ToTimestampSeconds,
+            "to_day_interval" => BuiltinScalarFunction::ToDayInterval,
+            "to_month_interval" => BuiltinScalarFunction::ToMonthInterval,
             "now" => BuiltinScalarFunction::Now,
             "translate" => BuiltinScalarFunction::Translate,
             "trim" => BuiltinScalarFunction::Trim,

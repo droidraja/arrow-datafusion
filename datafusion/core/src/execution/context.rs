@@ -1144,6 +1144,11 @@ impl SessionState {
         }
     }
 
+    /// Get query started timestamp
+    pub fn query_execution_start_time_ref(&self) -> &DateTime<Utc> {
+        &self.execution_props.query_execution_start_time
+    }
+
     fn resolve_table_ref<'a>(
         &'a self,
         table_ref: impl Into<TableReference<'a>>,
