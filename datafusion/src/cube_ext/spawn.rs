@@ -15,10 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use crate::cube_ext::catch_unwind::{async_try_with_catch_unwind, PanicError};
 use futures::Future;
 use tokio::task::JoinHandle;
 use tracing_futures::Instrument;
-use crate::cube_ext::catch_unwind::async_try_with_catch_unwind;
 
 /// Calls [tokio::spawn] and additionally enables tracing of the spawned task as part of the current
 /// computation. This is CubeStore approach to tracing, so all code must use this function instead
@@ -36,6 +36,41 @@ where
     } else {
         tokio::spawn(task)
     }
+}
+
+/// Executes future [f] in a new tokio thread. Catches panics.
+pub fn spawn_and_unwind<F, T, E>(f: F) -> JoinHandle<Result<T, E>>
+where
+    F: Future<Output = Result<T, E>> + Send + 'static,
+    T: Send + 'static,
+    E: From<PanicError> + Send + 'static,
+{
+    let task = async move {
+        match async_try_with_catch_unwind(f).await {
+            Ok(result) => result,
+            Err(panic) => Err(E::from(panic)),
+        }
+    };
+    spawn(task)
+}
+
+/// Executes future [f] in a new tokio thread. Feeds the result into [tx] oneshot channel. Catches panics.
+pub fn spawn_once_and_unwind<F, T, E>(
+    f: F,
+    tx: futures::channel::oneshot::Sender<Result<T, E>>,
+) -> JoinHandle<Result<(), Result<T, E>>>
+where
+    F: Future<Output = Result<T, E>> + Send + 'static,
+    T: Send + 'static,
+    E: From<PanicError> + Send + 'static,
+{
+    let task = async move {
+        match async_try_with_catch_unwind(f).await {
+            Ok(result) => tx.send(result),
+            Err(panic) => tx.send(Err(E::from(panic))),
+        }
+    };
+    spawn(task)
 }
 
 /// Propagates current span to blocking operation. See [spawn] for details.

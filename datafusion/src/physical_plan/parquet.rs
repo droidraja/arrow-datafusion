@@ -55,10 +55,10 @@ use parquet::arrow::{ArrowReader, ParquetFileArrowReader};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio_stream::wrappers::ReceiverStream;
 
+use crate::cube_ext::catch_unwind::try_with_catch_unwind;
 use crate::datasource::datasource::{ColumnStatistics, Statistics};
 use async_trait::async_trait;
 use futures::stream::{Stream, StreamExt};
-use crate::cube_ext::catch_unwind::try_with_catch_unwind;
 
 use super::SQLMetric;
 
@@ -465,23 +465,23 @@ impl ExecutionPlan for ParquetExec {
 
         cube_ext::spawn_blocking(move || {
             let response_tx = &response_tx;
-            match try_with_catch_unwind(move || read_files(
-                &filenames,
-                metrics,
-                &projection,
-                &predicate_builder,
-                batch_size,
-                response_tx,
-                limit,
-            )) {
+            match try_with_catch_unwind(move || {
+                read_files(
+                    &filenames,
+                    metrics,
+                    &projection,
+                    &predicate_builder,
+                    batch_size,
+                    response_tx,
+                    limit,
+                )
+            }) {
                 Ok(Ok(_)) => Ok(()),
                 Ok(Err(e)) => {
                     println!("Parquet reader thread terminated due to error: {:?}", e);
                     Ok(())
-                },
-                Err(panic) => {
-                    response_tx.blocking_send(Err(ArrowError::from(panic)))
                 }
+                Err(panic) => response_tx.blocking_send(Err(ArrowError::from(panic))),
             }
         });
 

@@ -82,7 +82,6 @@ use compute::cast;
 use smallvec::smallvec;
 use smallvec::SmallVec;
 use std::convert::TryFrom;
-use crate::cube_ext::catch_unwind::async_try_with_catch_unwind;
 
 /// Hash aggregate modes
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -809,41 +808,30 @@ impl GroupedHashAggregateStream {
 
         let schema_clone = schema.clone();
         let task = async move {
-            match async_try_with_catch_unwind(
-                async move {
-                    match strategy {
-                        AggregateStrategy::Hash => {
-                            compute_grouped_hash_aggregate(
-                                mode,
-                                schema_clone,
-                                group_expr,
-                                aggr_expr,
-                                input,
-                            )
-                                .await
-                        }
-                        AggregateStrategy::InplaceSorted => {
-                            compute_grouped_sorted_aggregate(
-                                mode,
-                                schema_clone,
-                                group_expr,
-                                aggr_expr,
-                                input,
-                            )
-                                .await
-                        }
-                    }
+            match strategy {
+                AggregateStrategy::Hash => {
+                    compute_grouped_hash_aggregate(
+                        mode,
+                        schema_clone,
+                        group_expr,
+                        aggr_expr,
+                        input,
+                    )
+                    .await
                 }
-            ).await {
-                Ok(result) => {
-                    tx.send(result)
-                },
-                Err(panic) => {
-                    tx.send(Err(ArrowError::from(panic)))
+                AggregateStrategy::InplaceSorted => {
+                    compute_grouped_sorted_aggregate(
+                        mode,
+                        schema_clone,
+                        group_expr,
+                        aggr_expr,
+                        input,
+                    )
+                    .await
                 }
             }
         };
-        cube_ext::spawn(task);
+        cube_ext::spawn_once_and_unwind(task, tx);
 
         Self {
             schema,
@@ -1028,19 +1016,8 @@ impl HashAggregateStream {
         let (tx, rx) = futures::channel::oneshot::channel();
 
         let schema_clone = schema.clone();
-        let task = async move {
-            match async_try_with_catch_unwind(
-                compute_hash_aggregate(mode, schema_clone, aggr_expr, input)
-            ).await {
-                Ok(result) => {
-                    tx.send(result)
-                },
-                Err(panic) => {
-                    tx.send(Err(ArrowError::from(panic)))
-                }
-            }
-        };
-        cube_ext::spawn(task);
+        let task = compute_hash_aggregate(mode, schema_clone, aggr_expr, input);
+        cube_ext::spawn_once_and_unwind(task, tx);
 
         Self {
             schema,
