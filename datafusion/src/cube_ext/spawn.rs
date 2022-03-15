@@ -18,6 +18,7 @@
 use futures::Future;
 use tokio::task::JoinHandle;
 use tracing_futures::Instrument;
+use crate::cube_ext::catch_unwind::async_try_with_catch_unwind;
 
 /// Calls [tokio::spawn] and additionally enables tracing of the spawned task as part of the current
 /// computation. This is CubeStore approach to tracing, so all code must use this function instead

@@ -40,6 +40,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Instant;
+use crate::cube_ext::catch_unwind::async_try_with_catch_unwind;
 
 /// Sort execution plan
 #[derive(Debug)]
@@ -254,23 +255,32 @@ impl SortStream {
         let (tx, rx) = futures::channel::oneshot::channel();
         let schema = input.schema();
         cube_ext::spawn(async move {
-            let schema = input.schema();
-            let sorted_batch = common::collect(input)
-                .await
-                .map_err(DataFusionError::into_arrow_external_error)
-                .and_then(move |batches| {
-                    let now = Instant::now();
-                    // combine all record batches into one for each column
-                    let combined = common::combine_batches(&batches, schema.clone())?;
-                    // sort combined record batch
-                    let result = combined
-                        .map(|batch| sort_batch(batch, schema, &expr))
-                        .transpose()?;
-                    sort_time.add(now.elapsed().as_nanos() as usize);
-                    Ok(result)
-                });
-
-            tx.send(sorted_batch)
+            match async_try_with_catch_unwind(
+                async move {
+                    let schema = input.schema();
+                    common::collect(input)
+                        .await
+                        .map_err(DataFusionError::into_arrow_external_error)
+                        .and_then(move |batches| {
+                            let now = Instant::now();
+                            // combine all record batches into one for each column
+                            let combined = common::combine_batches(&batches, schema.clone())?;
+                            // sort combined record batch
+                            let result = combined
+                                .map(|batch| sort_batch(batch, schema, &expr))
+                                .transpose()?;
+                            sort_time.add(now.elapsed().as_nanos() as usize);
+                            Ok(result)
+                        })
+                }
+            ).await {
+                Ok(result) => {
+                    tx.send(result)
+                },
+                Err(panic) => {
+                    tx.send(Err(ArrowError::from(panic)))
+                }
+            }
         });
 
         Self {

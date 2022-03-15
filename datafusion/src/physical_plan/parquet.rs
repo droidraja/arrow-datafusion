@@ -58,6 +58,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use crate::datasource::datasource::{ColumnStatistics, Statistics};
 use async_trait::async_trait;
 use futures::stream::{Stream, StreamExt};
+use crate::cube_ext::catch_unwind::try_with_catch_unwind;
 
 use super::SQLMetric;
 
@@ -463,7 +464,8 @@ impl ExecutionPlan for ParquetExec {
         let limit = self.limit;
 
         cube_ext::spawn_blocking(move || {
-            if let Err(e) = read_files(
+            let response_tx = &response_tx;
+            match try_with_catch_unwind(move || read_files(
                 &filenames,
                 metrics,
                 &projection,
@@ -471,8 +473,15 @@ impl ExecutionPlan for ParquetExec {
                 batch_size,
                 response_tx,
                 limit,
-            ) {
-                println!("Parquet reader thread terminated due to error: {:?}", e);
+            )) {
+                Ok(Ok(_)) => Ok(()),
+                Ok(Err(e)) => {
+                    println!("Parquet reader thread terminated due to error: {:?}", e);
+                    Ok(())
+                },
+                Err(panic) => {
+                    response_tx.blocking_send(Err(ArrowError::from(panic)))
+                }
             }
         });
 
@@ -663,7 +672,7 @@ fn read_files(
     projection: &[usize],
     predicate_builder: &Option<PruningPredicate>,
     batch_size: usize,
-    response_tx: Sender<ArrowResult<RecordBatch>>,
+    response_tx: &Sender<ArrowResult<RecordBatch>>,
     limit: Option<usize>,
 ) -> Result<()> {
     let mut total_rows = 0;
