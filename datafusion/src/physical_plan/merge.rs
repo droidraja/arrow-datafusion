@@ -41,7 +41,6 @@ use crate::physical_plan::{ExecutionPlan, OptimizerHints};
 
 use super::SendableRecordBatchStream;
 use crate::cube_ext;
-use crate::cube_ext::catch_unwind::async_try_with_catch_unwind;
 use pin_project_lite::pin_project;
 use std::option::Option::None;
 
@@ -127,39 +126,27 @@ impl ExecutionPlan for MergeExec {
                 for part_i in 0..input_partitions {
                     let input = self.input.clone();
                     let mut sender = sender.clone();
-                    let mut sender_unwind = sender.clone();
+                    let sender_unwind = sender.clone();
                     let task = async move {
-                        match async_try_with_catch_unwind(async move {
-                            let mut stream = match input.execute(part_i).await {
-                                Err(e) => {
-                                    // If send fails, plan being torn
-                                    // down, no place to send the error
-                                    let arrow_error =
-                                        ArrowError::ExternalError(Box::new(e));
-                                    sender.send(Err(arrow_error)).await.ok();
-                                    return;
-                                }
-                                Ok(stream) => stream,
-                            };
+                        let mut stream = match input.execute(part_i).await {
+                            Err(e) => {
+                                // If send fails, plan being torn
+                                // down, no place to send the error
+                                let arrow_error =
+                                    ArrowError::ExternalError(Box::new(e));
+                                sender.send(Err(arrow_error)).await.ok();
+                                return;
+                            }
+                            Ok(stream) => stream,
+                        };
 
-                            while let Some(item) = stream.next().await {
-                                // If send fails, plan being torn down,
-                                // there is no place to send the error
-                                sender.send(item).await.ok();
-                            }
-                        })
-                        .await
-                        {
-                            Ok(_) => (),
-                            Err(panic) => {
-                                sender_unwind
-                                    .send(Err(ArrowError::from(panic)))
-                                    .await
-                                    .ok();
-                            }
+                        while let Some(item) = stream.next().await {
+                            // If send fails, plan being torn down,
+                            // there is no place to send the error
+                            sender.send(item).await.ok();
                         }
                     };
-                    cube_ext::spawn(task);
+                    cube_ext::spawn_mpsc_with_catch_unwind(task, sender_unwind);
                 }
 
                 Ok(Box::pin(MergeStream {

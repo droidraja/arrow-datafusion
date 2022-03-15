@@ -831,7 +831,7 @@ impl GroupedHashAggregateStream {
                 }
             }
         };
-        cube_ext::spawn_once_with_catch_unwind(task, tx);
+        cube_ext::spawn_oneshot_with_catch_unwind(task, tx);
 
         Self {
             schema,
@@ -1017,7 +1017,7 @@ impl HashAggregateStream {
 
         let schema_clone = schema.clone();
         let task = compute_hash_aggregate(mode, schema_clone, aggr_expr, input);
-        cube_ext::spawn_once_with_catch_unwind(task, tx);
+        cube_ext::spawn_oneshot_with_catch_unwind(task, tx);
 
         Self {
             schema,

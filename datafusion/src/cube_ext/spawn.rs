@@ -15,8 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::cube_ext::catch_unwind::{async_try_with_catch_unwind, PanicError};
+use crate::cube_ext::catch_unwind::{async_try_with_catch_unwind, PanicError, try_with_catch_unwind};
 use futures::Future;
+use futures::sink::SinkExt;
 use tokio::task::JoinHandle;
 use tracing_futures::Instrument;
 
@@ -36,41 +37,6 @@ where
     } else {
         tokio::spawn(task)
     }
-}
-
-/// Executes future [f] in a new tokio thread. Catches panics.
-pub fn spawn_with_catch_unwind<F, T, E>(f: F) -> JoinHandle<Result<T, E>>
-where
-    F: Future<Output = Result<T, E>> + Send + 'static,
-    T: Send + 'static,
-    E: From<PanicError> + Send + 'static,
-{
-    let task = async move {
-        match async_try_with_catch_unwind(f).await {
-            Ok(result) => result,
-            Err(panic) => Err(E::from(panic)),
-        }
-    };
-    spawn(task)
-}
-
-/// Executes future [f] in a new tokio thread. Feeds the result into [tx] oneshot channel. Catches panics.
-pub fn spawn_once_with_catch_unwind<F, T, E>(
-    f: F,
-    tx: futures::channel::oneshot::Sender<Result<T, E>>,
-) -> JoinHandle<Result<(), Result<T, E>>>
-where
-    F: Future<Output = Result<T, E>> + Send + 'static,
-    T: Send + 'static,
-    E: From<PanicError> + Send + 'static,
-{
-    let task = async move {
-        match async_try_with_catch_unwind(f).await {
-            Ok(result) => tx.send(result),
-            Err(panic) => tx.send(Err(E::from(panic))),
-        }
-    };
-    spawn(task)
 }
 
 /// Propagates current span to blocking operation. See [spawn] for details.
@@ -102,4 +68,80 @@ fn new_subtask_span() -> Option<SpawnSpans> {
     // TODO: ensure this is always enabled.
     let child = tracing::info_span!(parent: &parent, "subtask");
     Some(SpawnSpans { parent, child })
+}
+
+/// Executes future [f] in a new tokio thread. Catches panics.
+pub fn spawn_with_catch_unwind<F, T, E>(f: F) -> JoinHandle<Result<T, E>>
+    where
+        F: Future<Output = Result<T, E>> + Send + 'static,
+        T: Send + 'static,
+        E: From<PanicError> + Send + 'static,
+{
+    let task = async move {
+        match async_try_with_catch_unwind(f).await {
+            Ok(result) => result,
+            Err(panic) => Err(E::from(panic)),
+        }
+    };
+    spawn(task)
+}
+
+/// Executes future [f] in a new tokio thread. Feeds the result into [tx] oneshot channel. Catches panics.
+pub fn spawn_oneshot_with_catch_unwind<F, T, E>(
+    f: F,
+    tx: futures::channel::oneshot::Sender<Result<T, E>>,
+) -> JoinHandle<Result<(), Result<T, E>>>
+    where
+        F: Future<Output = Result<T, E>> + Send + 'static,
+        T: Send + 'static,
+        E: From<PanicError> + Send + 'static,
+{
+    let task = async move {
+        match async_try_with_catch_unwind(f).await {
+            Ok(result) => tx.send(result),
+            Err(panic) => tx.send(Err(E::from(panic))),
+        }
+    };
+    spawn(task)
+}
+
+/// Executes future [f] in a new tokio thread. Catches panics and feeds them into a [tx] mpsc channel
+pub fn spawn_mpsc_with_catch_unwind<F, T, E>(
+    f: F,
+    mut tx: futures::channel::mpsc::Sender<Result<T, E>>,
+) -> JoinHandle<()>
+    where
+        F: Future<Output = ()> + Send + 'static,
+        T: Send + 'static,
+        E: From<PanicError> + Send + 'static,
+{
+    let task = async move {
+        match async_try_with_catch_unwind(f).await {
+            Ok(_) => (),
+            Err(panic) => {
+                tx.send(Err(E::from(panic))).await.ok();
+            },
+        }
+    };
+    spawn(task)
+}
+
+/// Executes fn [f] in a new tokio thread. Catches panics and feeds them into a [tx] mpsc channel.
+pub fn spawn_blocking_mpsc_with_catch_unwind<F, R, T, E>(
+    f: F,
+    tx: tokio::sync::mpsc::Sender<Result<T, E>>
+) -> JoinHandle<()>
+    where
+        F: FnOnce() -> R + Send + 'static,
+        R: Send + 'static,
+        T: Send + 'static,
+        E: From<PanicError> + Send + 'static,
+{
+    let task = move || match try_with_catch_unwind(f) {
+        Ok(_) => (),
+        Err(panic) => {
+            tx.blocking_send(Err(E::from(panic))).ok();
+        },
+    };
+    spawn_blocking(task)
 }

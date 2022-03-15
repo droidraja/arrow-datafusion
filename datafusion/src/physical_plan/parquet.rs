@@ -55,7 +55,6 @@ use parquet::arrow::{ArrowReader, ParquetFileArrowReader};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio_stream::wrappers::ReceiverStream;
 
-use crate::cube_ext::catch_unwind::try_with_catch_unwind;
 use crate::datasource::datasource::{ColumnStatistics, Statistics};
 use async_trait::async_trait;
 use futures::stream::{Stream, StreamExt};
@@ -462,28 +461,19 @@ impl ExecutionPlan for ParquetExec {
         let predicate_builder = self.predicate_builder.clone();
         let batch_size = self.batch_size;
         let limit = self.limit;
+        let tx_unwind = response_tx.clone();
 
-        cube_ext::spawn_blocking(move || {
-            let response_tx = &response_tx;
-            match try_with_catch_unwind(move || {
-                read_files(
-                    &filenames,
-                    metrics,
-                    &projection,
-                    &predicate_builder,
-                    batch_size,
-                    response_tx,
-                    limit,
-                )
-            }) {
-                Ok(Ok(_)) => Ok(()),
-                Ok(Err(e)) => {
-                    println!("Parquet reader thread terminated due to error: {:?}", e);
-                    Ok(())
-                }
-                Err(panic) => response_tx.blocking_send(Err(ArrowError::from(panic))),
-            }
-        });
+        cube_ext::spawn_blocking_mpsc_with_catch_unwind(move || {
+            read_files(
+                &filenames,
+                metrics,
+                &projection,
+                &predicate_builder,
+                batch_size,
+                response_tx,
+                limit,
+            )
+        }, tx_unwind);
 
         Ok(Box::pin(ParquetStream {
             schema: self.schema.clone(),
@@ -672,7 +662,7 @@ fn read_files(
     projection: &[usize],
     predicate_builder: &Option<PruningPredicate>,
     batch_size: usize,
-    response_tx: &Sender<ArrowResult<RecordBatch>>,
+    response_tx: Sender<ArrowResult<RecordBatch>>,
     limit: Option<usize>,
 ) -> Result<()> {
     let mut total_rows = 0;
