@@ -39,7 +39,7 @@ where
 }
 
 /// Executes future [f] in a new tokio thread. Catches panics.
-pub fn spawn_and_unwind<F, T, E>(f: F) -> JoinHandle<Result<T, E>>
+pub fn spawn_with_catch_unwind<F, T, E>(f: F) -> JoinHandle<Result<T, E>>
 where
     F: Future<Output = Result<T, E>> + Send + 'static,
     T: Send + 'static,
@@ -55,7 +55,7 @@ where
 }
 
 /// Executes future [f] in a new tokio thread. Feeds the result into [tx] oneshot channel. Catches panics.
-pub fn spawn_once_and_unwind<F, T, E>(
+pub fn spawn_once_with_catch_unwind<F, T, E>(
     f: F,
     tx: futures::channel::oneshot::Sender<Result<T, E>>,
 ) -> JoinHandle<Result<(), Result<T, E>>>

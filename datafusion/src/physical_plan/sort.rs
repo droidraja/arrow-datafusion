@@ -270,7 +270,7 @@ impl SortStream {
                     Ok(result)
                 })
         };
-        cube_ext::spawn_once_and_unwind(task, tx);
+        cube_ext::spawn_once_with_catch_unwind(task, tx);
 
         Self {
             output: rx,
