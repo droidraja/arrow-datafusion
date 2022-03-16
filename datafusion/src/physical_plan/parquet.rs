@@ -465,7 +465,7 @@ impl ExecutionPlan for ParquetExec {
 
         cube_ext::spawn_blocking_mpsc_with_catch_unwind(
             move || {
-                read_files(
+                if let Err(e) = read_files(
                     &filenames,
                     metrics,
                     &projection,
@@ -473,7 +473,9 @@ impl ExecutionPlan for ParquetExec {
                     batch_size,
                     response_tx,
                     limit,
-                )
+                ) {
+                    println!("Parquet reader thread terminated due to error: {:?}", e);
+                }
             },
             tx_unwind,
         );
