@@ -23,7 +23,7 @@ impl From<PanicError> for ArrowError {
 
 impl From<PanicError> for DataFusionError {
     fn from(error: PanicError) -> Self {
-        DataFusionError::Internal(format!("Panic: {}", error.msg))
+        DataFusionError::Panic(error.msg)
     }
 }
 
