@@ -463,17 +463,20 @@ impl ExecutionPlan for ParquetExec {
         let limit = self.limit;
         let tx_unwind = response_tx.clone();
 
-        cube_ext::spawn_blocking_mpsc_with_catch_unwind(move || {
-            read_files(
-                &filenames,
-                metrics,
-                &projection,
-                &predicate_builder,
-                batch_size,
-                response_tx,
-                limit,
-            )
-        }, tx_unwind);
+        cube_ext::spawn_blocking_mpsc_with_catch_unwind(
+            move || {
+                read_files(
+                    &filenames,
+                    metrics,
+                    &projection,
+                    &predicate_builder,
+                    batch_size,
+                    response_tx,
+                    limit,
+                )
+            },
+            tx_unwind,
+        );
 
         Ok(Box::pin(ParquetStream {
             schema: self.schema.clone(),

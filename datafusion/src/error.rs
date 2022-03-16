@@ -77,7 +77,9 @@ impl From<ArrowError> for DataFusionError {
     fn from(e: ArrowError) -> Self {
         let prefix = "Panic: ";
         match e {
-            ArrowError::ComputeError(msg) if msg.starts_with(prefix) => DataFusionError::Panic(msg[prefix.len()..].to_string()),
+            ArrowError::ComputeError(msg) if msg.starts_with(prefix) => {
+                DataFusionError::Panic(msg[prefix.len()..].to_string())
+            }
             e => DataFusionError::ArrowError(e),
         }
     }

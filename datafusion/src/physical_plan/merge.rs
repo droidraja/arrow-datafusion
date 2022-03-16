@@ -132,8 +132,7 @@ impl ExecutionPlan for MergeExec {
                             Err(e) => {
                                 // If send fails, plan being torn
                                 // down, no place to send the error
-                                let arrow_error =
-                                    ArrowError::ExternalError(Box::new(e));
+                                let arrow_error = ArrowError::ExternalError(Box::new(e));
                                 sender.send(Err(arrow_error)).await.ok();
                                 return;
                             }

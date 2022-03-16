@@ -18,6 +18,7 @@
 //! Defines common code used in execution plans
 
 use super::{RecordBatchStream, SendableRecordBatchStream};
+use crate::cube_ext;
 use crate::error::{DataFusionError, Result};
 use crate::physical_plan::ExecutionPlan;
 use arrow::compute::concat;
@@ -32,7 +33,6 @@ use std::fs::metadata;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::task::JoinHandle;
-use crate::cube_ext;
 
 /// Stream of record batches
 pub struct SizedRecordBatchStream {
@@ -170,7 +170,7 @@ pub(crate) fn spawn_execution(
                 output.send(item).await.ok();
             }
         },
-        output_unwind
+        output_unwind,
     )
 }
 
