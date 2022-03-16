@@ -3939,7 +3939,42 @@ fn panic_udf(_args: &[ColumnarValue]) -> Result<ColumnarValue> {
 }
 
 #[tokio::test]
-async fn test_user_defined_panic() {
+async fn test_user_defined_panic_const() {
+    let mut ctx = ExecutionContext::new();
+    register_aggregate_csv(&mut ctx).unwrap();
+    ctx.register_udf(create_udf(
+        "panic_udf",
+        vec![DataType::Float64],
+        Arc::new(DataType::Float64),
+        Arc::new(panic_udf),
+    ));
+    let sql = "SELECT panic_udf(0)";
+    let plan = ctx.create_logical_plan(sql).unwrap();
+    let plan = ctx.optimize(&plan).unwrap();
+    let plan = ctx.create_physical_plan(&plan);
+    assert!(matches!(plan, Err(DataFusionError::Internal(msg)) if msg == "Panic: oops"));
+}
+
+#[tokio::test]
+async fn test_user_defined_panic_expr() {
+    let mut ctx = ExecutionContext::new();
+    register_aggregate_csv(&mut ctx).unwrap();
+    ctx.register_udf(create_udf(
+        "panic_udf",
+        vec![DataType::Float64],
+        Arc::new(DataType::Float64),
+        Arc::new(panic_udf),
+    ));
+    let sql = "SELECT panic_udf(c2) FROM aggregate_test_100";
+    let plan = ctx.create_logical_plan(sql).unwrap();
+    let plan = ctx.optimize(&plan).unwrap();
+    let plan = ctx.create_physical_plan(&plan).unwrap();
+    let result = collect(plan).await;
+    assert!(matches!(result, Err(DataFusionError::ArrowError(ArrowError::ComputeError(msg))) if msg == "Panic: oops"));
+}
+
+#[tokio::test]
+async fn test_user_defined_panic_group() {
     let mut ctx = ExecutionContext::new();
     register_aggregate_csv(&mut ctx).unwrap();
     ctx.register_udf(create_udf(

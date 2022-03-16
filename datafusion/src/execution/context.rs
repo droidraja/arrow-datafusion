@@ -80,6 +80,7 @@ use crate::{dataframe::DataFrame, physical_plan::udaf::AggregateUDF};
 use chrono::{DateTime, Utc};
 use parquet::arrow::ArrowWriter;
 use parquet::file::properties::WriterProperties;
+use crate::cube_ext::catch_unwind::try_with_catch_unwind;
 
 /// ExecutionContext is the main interface for executing queries with DataFusion. The context
 /// provides the following functionality:
@@ -638,7 +639,10 @@ impl QueryPlanner for DefaultQueryPlanner {
         ctx_state: &ExecutionContextState,
     ) -> Result<Arc<dyn ExecutionPlan>> {
         let planner = DefaultPhysicalPlanner::default();
-        planner.create_physical_plan(logical_plan, ctx_state)
+        match try_with_catch_unwind(move || planner.create_physical_plan(logical_plan, ctx_state)) {
+            Ok(result) => result,
+            Err(panic) => Err(DataFusionError::from(panic)),
+        }
     }
 }
 
