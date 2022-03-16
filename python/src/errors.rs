@@ -51,7 +51,9 @@ impl From<InnerDataFusionError> for DataFusionError {
 }
 
 impl From<ArrowError> for DataFusionError {
-    fn from(err: ArrowError) -> DataFusionError { DataFusionError::ArrowError(err) }
+    fn from(err: ArrowError) -> DataFusionError {
+        DataFusionError::ArrowError(err)
+    }
 }
 
 pub(crate) fn wrap<T>(a: Result<T, InnerDataFusionError>) -> Result<T, DataFusionError> {
