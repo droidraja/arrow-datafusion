@@ -27,7 +27,7 @@ use crate::datasource::datasource::Statistics;
 use crate::datasource::TableProvider;
 use crate::error::Result;
 use crate::logical_plan::{combine_filters, Expr};
-use crate::physical_plan::parquet::ParquetExec;
+use crate::physical_plan::parquet::{MetadataCache, ParquetExec};
 use crate::physical_plan::ExecutionPlan;
 
 use super::datasource::TableProviderFilterPushDown;
@@ -43,9 +43,14 @@ pub struct ParquetTable {
 
 impl ParquetTable {
     /// Attempt to initialize a new `ParquetTable` from a file path.
-    pub fn try_new(path: impl Into<String>, max_concurrency: usize) -> Result<Self> {
+    pub fn try_new(
+        path: impl Into<String>,
+        max_concurrency: usize,
+        metadata_cache: Arc<dyn MetadataCache>,
+    ) -> Result<Self> {
         let path = path.into();
-        let parquet_exec = ParquetExec::try_from_path(&path, None, None, 0, 1, None)?;
+        let parquet_exec =
+            ParquetExec::try_from_path(&path, None, None, 0, 1, None, metadata_cache)?;
         let schema = parquet_exec.schema();
         Ok(Self {
             path,
@@ -98,6 +103,7 @@ impl TableProvider for ParquetTable {
         batch_size: usize,
         filters: &[Expr],
         limit: Option<usize>,
+        metadata_cache: Arc<dyn MetadataCache>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
         // If enable pruning then combine the filters to build the predicate.
         // If disable pruning then set the predicate to None, thus readers
@@ -116,6 +122,7 @@ impl TableProvider for ParquetTable {
                 .unwrap_or(batch_size),
             self.max_concurrency,
             limit,
+            metadata_cache,
         )?))
     }
 

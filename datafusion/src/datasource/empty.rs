@@ -26,6 +26,7 @@ use crate::datasource::datasource::Statistics;
 use crate::datasource::TableProvider;
 use crate::error::Result;
 use crate::logical_plan::Expr;
+use crate::physical_plan::parquet::MetadataCache;
 use crate::physical_plan::{empty::EmptyExec, ExecutionPlan};
 
 /// A table with a schema but no data.
@@ -55,6 +56,7 @@ impl TableProvider for EmptyTable {
         _batch_size: usize,
         _filters: &[Expr],
         _limit: Option<usize>,
+        _metadata_cache: Arc<dyn MetadataCache>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
         // even though there is no data, projections apply
         let projection = match projection.clone() {

@@ -32,6 +32,7 @@ use crate::error::{DataFusionError, Result};
 use crate::logical_plan::Expr;
 use crate::physical_plan::common;
 use crate::physical_plan::memory::MemoryExec;
+use crate::physical_plan::parquet::MetadataCache;
 use crate::physical_plan::ExecutionPlan;
 use crate::{
     cube_ext,
@@ -114,9 +115,10 @@ impl MemTable {
         t: Arc<dyn TableProvider>,
         batch_size: usize,
         output_partitions: Option<usize>,
+        metadata_cache: Arc<dyn MetadataCache>,
     ) -> Result<Self> {
         let schema = t.schema();
-        let exec = t.scan(&None, batch_size, &[], None)?;
+        let exec = t.scan(&None, batch_size, &[], None, metadata_cache)?;
         let partition_count = exec.output_partitioning().partition_count();
 
         let tasks = (0..partition_count)
@@ -179,6 +181,7 @@ impl TableProvider for MemTable {
         _batch_size: usize,
         _filters: &[Expr],
         _limit: Option<usize>,
+        _metadata_cache: Arc<dyn MetadataCache>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
         let columns: Vec<usize> = match projection {
             Some(p) => p.clone(),

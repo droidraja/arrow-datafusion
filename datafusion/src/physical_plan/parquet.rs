@@ -43,7 +43,12 @@ use arrow::{
 };
 use hashbrown::HashMap;
 use log::debug;
-use parquet::file::{footer, metadata::RowGroupMetaData, reader::{FileReader, SerializedFileReader}, statistics::Statistics as ParquetStatistics};
+use parquet::file::{
+    footer,
+    metadata::RowGroupMetaData,
+    reader::{FileReader, SerializedFileReader},
+    statistics::Statistics as ParquetStatistics,
+};
 
 use fmt::Debug;
 use parquet::arrow::{ArrowReader, ParquetFileArrowReader};
@@ -76,7 +81,7 @@ pub struct ParquetExec {
     /// Optional predicate builder
     predicate_builder: Option<PruningPredicate>,
     /// Creates readers for parquet files.
-    parquet_reader_factory: Arc<ParquetReaderFactory>,
+    metadata_cache: Arc<dyn MetadataCache>,
     /// Optional limit of the number of rows
     limit: Option<usize>,
 }
@@ -116,35 +121,70 @@ struct ParquetPartitionMetrics {
     pub row_groups_pruned: Arc<SQLMetric>,
 }
 
-pub struct ParquetReaderFactory {
-    cache: Mutex<lru::LruCache<String, parquet::errors::Result<Arc<ParquetMetaData>>>>
+/// Cache for (Parquet) Metadata
+pub trait MetadataCache: Debug + Sync + Send {
+    /// Returns the metadata for the given file, possibly cached on key
+    fn parquet_metadata(&self, key: &str, file: &File) -> Result<Arc<ParquetMetaData>>;
+
+    /// Creates a ParquetFileArrowReader for the given filename
+    fn parquet_arrow_reader(&self, filename: &str) -> Result<ParquetFileArrowReader> {
+        let file = File::open(filename)?;
+        let metadata = self.parquet_metadata(filename, &file)?;
+        let file_reader =
+            Arc::new(SerializedFileReader::new_with_metadata(file, metadata));
+        Ok(ParquetFileArrowReader::new(file_reader))
+    }
 }
 
-impl ParquetReaderFactory {
-    pub fn new(parquet_metadata_cache_capacity: usize) -> Arc<ParquetReaderFactory> {
-        Arc::new(ParquetReaderFactory {
-            cache: Mutex::new(lru::LruCache::new(parquet_metadata_cache_capacity)),
-        })
-    }
+/// Default MetadataCache, does not cache anything
+#[derive(Debug)]
+pub struct DefaultMetadataCache;
 
-    pub fn reader(&self, filename: &str) -> Result<ParquetFileArrowReader> {
-        let file = File::open(filename)?;
+impl DefaultMetadataCache {
+    /// Creates a new DefaultMetadataCache
+    pub fn new() -> Self {
+        DefaultMetadataCache {}
+    }
+}
+
+impl MetadataCache for DefaultMetadataCache {
+    fn parquet_metadata(&self, _key: &str, file: &File) -> Result<Arc<ParquetMetaData>> {
+        Ok(Arc::new(footer::parse_metadata(file)?))
+    }
+}
+
+/// LruMetadataCache, caches parquet metadata.
+#[derive(Debug)]
+pub struct LruMetadataCache {
+    parquet_metadata_cache: Mutex<lru::LruCache<String, Arc<ParquetMetaData>>>,
+}
+
+impl LruMetadataCache {
+    /// Creates a new LruMetadataCache
+    pub fn new(metadata_cache_capacity: usize) -> Self {
+        LruMetadataCache {
+            parquet_metadata_cache: Mutex::new(lru::LruCache::new(
+                metadata_cache_capacity,
+            )),
+        }
+    }
+}
+
+impl MetadataCache for LruMetadataCache {
+    fn parquet_metadata(&self, key: &str, file: &File) -> Result<Arc<ParquetMetaData>> {
         {
-            let mut cache = self.cache.lock().unwrap();
-            let metadata = cache.get(&filename.to_string());
+            let mut cache = self.parquet_metadata_cache.lock().unwrap();
+            let metadata = cache.get(&key.to_string());
             if let Some(metadata) = metadata {
-                let file_reader = Arc::new(SerializedFileReader::new_with_metadata(file, metadata?)?);
-                return Ok(ParquetFileArrowReader::new(file_reader));
+                return Ok(metadata.clone());
             }
         }
-        let metadata = footer::parse_metadata(&file).map(|m| Arc::new(m));
+        let metadata = footer::parse_metadata(file.clone()).map(|m| Arc::new(m))?;
         {
-            let mut cache = self.cache.lock().unwrap();
-            cache.put(filename.to_string(), metadata.clone());
+            let mut cache = self.parquet_metadata_cache.lock().unwrap();
+            cache.put(key.to_string(), metadata.clone());
         }
-        let file = File::open(filename)?;
-        let file_reader = Arc::new(SerializedFileReader::new_with_metadata(file, metadata?)?);
-        Ok(ParquetFileArrowReader::new(file_reader))
+        Ok(metadata)
     }
 }
 
@@ -158,6 +198,7 @@ impl ParquetExec {
         batch_size: usize,
         max_concurrency: usize,
         limit: Option<usize>,
+        metadata_cache: Arc<dyn MetadataCache>,
     ) -> Result<Self> {
         // build a list of filenames from the specified path, which could be a single file or
         // a directory containing one or more parquet files
@@ -179,6 +220,7 @@ impl ParquetExec {
                 batch_size,
                 max_concurrency,
                 limit,
+                metadata_cache,
             )
         }
     }
@@ -192,7 +234,7 @@ impl ParquetExec {
         batch_size: usize,
         max_concurrency: usize,
         limit: Option<usize>,
-        parquet_reader_factory: Arc<ParquetReaderFactory>,
+        metadata_cache: Arc<dyn MetadataCache>,
     ) -> Result<Self> {
         debug!("Creating ParquetExec, filenames: {:?}, projection {:?}, predicate: {:?}, limit: {:?}",
                filenames, projection, predicate, limit);
@@ -212,7 +254,8 @@ impl ParquetExec {
             let mut total_files = 0;
             for filename in &filenames {
                 total_files += 1;
-                let mut arrow_reader = parquet_reader_factory.reader(filename.as_str())?;
+                let mut arrow_reader =
+                    metadata_cache.parquet_arrow_reader(filename.as_str())?;
                 let meta_data = arrow_reader.get_metadata();
                 // collect all the unique schemas in this data set
                 let schema = arrow_reader.get_schema()?;
@@ -300,6 +343,7 @@ impl ParquetExec {
             predicate_builder,
             batch_size,
             limit,
+            metadata_cache,
         ))
     }
 
@@ -312,6 +356,7 @@ impl ParquetExec {
         predicate_builder: Option<PruningPredicate>,
         batch_size: usize,
         limit: Option<usize>,
+        metadata_cache: Arc<dyn MetadataCache>,
     ) -> Self {
         let projection = match projection {
             Some(p) => p,
@@ -377,6 +422,7 @@ impl ParquetExec {
             batch_size,
             statistics,
             limit,
+            metadata_cache,
         }
     }
 
@@ -710,7 +756,7 @@ fn read_files(
                 metrics.clone(),
                 file_reader.metadata().row_groups(),
             );
-            file_reader = file_reader.filter_row_groups(&row_group_predicate);
+            file_reader.filter_row_groups(&row_group_predicate);
         }
         let mut arrow_reader = ParquetFileArrowReader::new(Arc::new(file_reader));
         let mut batch_reader = arrow_reader
@@ -839,6 +885,7 @@ mod tests {
             1024,
             4,
             None,
+            Arc::new(DefaultMetadataCache::new()),
         )?;
         assert_eq!(parquet_exec.output_partitioning().partition_count(), 1);
 

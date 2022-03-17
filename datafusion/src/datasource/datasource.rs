@@ -22,6 +22,7 @@ use std::sync::Arc;
 
 use crate::error::Result;
 use crate::logical_plan::Expr;
+use crate::physical_plan::parquet::MetadataCache;
 use crate::physical_plan::ExecutionPlan;
 use crate::{arrow::datatypes::SchemaRef, scalar::ScalarValue};
 
@@ -102,6 +103,7 @@ pub trait TableProvider: Sync + Send {
         // If set, it contains the amount of rows needed by the `LogicalPlan`,
         // The datasource should return *at least* this number of rows if available.
         limit: Option<usize>,
+        metadata_cache: Arc<dyn MetadataCache>,
     ) -> Result<Arc<dyn ExecutionPlan>>;
 
     /// Returns the table Statistics

@@ -357,7 +357,13 @@ impl DefaultPhysicalPlanner {
                 // doesn't know (nor should care) how the relation was
                 // referred to in the query
                 let filters = unnormalize_cols(filters.iter().cloned());
-                source.scan(projection, batch_size, &filters, *limit)
+                source.scan(
+                    projection,
+                    batch_size,
+                    &filters,
+                    *limit,
+                    ctx_state.metadata_cache.clone(),
+                )
             }
             LogicalPlan::Window {
                 input, window_expr, ..

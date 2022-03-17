@@ -42,6 +42,7 @@ use crate::logical_plan::{
     columnize_expr, normalize_col, normalize_cols, Column, DFField, DFSchema,
     DFSchemaRef, Partitioning,
 };
+use crate::physical_plan::parquet::MetadataCache;
 use crate::sql::utils::find_columns;
 use arrow::datatypes::{DataType, TimeUnit};
 
@@ -142,9 +143,16 @@ impl LogicalPlanBuilder {
         path: impl Into<String>,
         projection: Option<Vec<usize>>,
         max_concurrency: usize,
+        metadata_cache: Arc<dyn MetadataCache>,
     ) -> Result<Self> {
         let path = path.into();
-        Self::scan_parquet_with_name(path.clone(), projection, max_concurrency, path)
+        Self::scan_parquet_with_name(
+            path.clone(),
+            projection,
+            max_concurrency,
+            path,
+            metadata_cache,
+        )
     }
 
     /// Scan a Parquet data source and register it with a given table name
@@ -153,8 +161,13 @@ impl LogicalPlanBuilder {
         projection: Option<Vec<usize>>,
         max_concurrency: usize,
         table_name: impl Into<String>,
+        metadata_cache: Arc<dyn MetadataCache>,
     ) -> Result<Self> {
-        let provider = Arc::new(ParquetTable::try_new(path, max_concurrency)?);
+        let provider = Arc::new(ParquetTable::try_new(
+            path,
+            max_concurrency,
+            metadata_cache,
+        )?);
         Self::scan(table_name, provider, projection)
     }
 
