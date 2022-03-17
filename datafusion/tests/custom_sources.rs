@@ -44,6 +44,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use async_trait::async_trait;
+use datafusion::physical_plan::parquet::MetadataCache;
 
 //// Custom source dataframe tests ////
 
@@ -162,6 +163,7 @@ impl TableProvider for CustomTableProvider {
         _batch_size: usize,
         _filters: &[Expr],
         _limit: Option<usize>,
+        _metadata_cache: Arc<dyn MetadataCache>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
         Ok(Arc::new(CustomExecutionPlan {
             projection: projection.clone(),

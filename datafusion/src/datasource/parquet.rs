@@ -144,12 +144,13 @@ mod tests {
     };
     use arrow::record_batch::RecordBatch;
     use futures::StreamExt;
+    use crate::physical_plan::parquet::DefaultMetadataCache;
 
     #[tokio::test]
     async fn read_small_batches() -> Result<()> {
         let table = load_table("alltypes_plain.parquet")?;
         let projection = None;
-        let exec = table.scan(&projection, 2, &[], None)?;
+        let exec = table.scan(&projection, 2, &[], None, Arc::new(DefaultMetadataCache::new()))?;
         let stream = exec.execute(0).await?;
 
         let _ = stream
@@ -362,7 +363,7 @@ mod tests {
     fn load_table(name: &str) -> Result<Arc<dyn TableProvider>> {
         let testdata = crate::test_util::parquet_test_data();
         let filename = format!("{}/{}", testdata, name);
-        let table = ParquetTable::try_new(&filename, 2)?;
+        let table = ParquetTable::try_new(&filename, 2, Arc::new(DefaultMetadataCache::new()))?;
         Ok(Arc::new(table))
     }
 
@@ -370,7 +371,7 @@ mod tests {
         table: Arc<dyn TableProvider>,
         projection: &Option<Vec<usize>>,
     ) -> Result<RecordBatch> {
-        let exec = table.scan(projection, 1024, &[], None)?;
+        let exec = table.scan(projection, 1024, &[], None, Arc::new(DefaultMetadataCache::new()))?;
         let mut it = exec.execute(0).await?;
         it.next()
             .await

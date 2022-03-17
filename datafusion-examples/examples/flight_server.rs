@@ -16,6 +16,7 @@
 // under the License.
 
 use std::pin::Pin;
+use std::sync::Arc;
 
 use arrow_flight::SchemaAsIpc;
 use futures::Stream;
@@ -31,6 +32,7 @@ use arrow_flight::{
     Action, ActionType, Criteria, Empty, FlightData, FlightDescriptor, FlightInfo,
     HandshakeRequest, HandshakeResponse, PutResult, SchemaResult, Ticket,
 };
+use datafusion::physical_plan::parquet::DefaultMetadataCache;
 
 #[derive(Clone)]
 pub struct FlightServiceImpl {}
@@ -65,7 +67,7 @@ impl FlightService for FlightServiceImpl {
     ) -> Result<Response<SchemaResult>, Status> {
         let request = request.into_inner();
 
-        let table = ParquetTable::try_new(&request.path[0], num_cpus::get()).unwrap();
+        let table = ParquetTable::try_new(&request.path[0], num_cpus::get(), Arc::new(DefaultMetadataCache::new())).unwrap();
 
         let options = datafusion::arrow::ipc::writer::IpcWriteOptions::default();
         let schema_result = SchemaAsIpc::new(table.schema().as_ref(), &options).into();

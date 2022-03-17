@@ -163,6 +163,7 @@ mod tests {
         datasource::{datasource::Statistics, TableProvider},
         logical_plan::Expr,
     };
+    use crate::physical_plan::parquet::MetadataCache;
 
     struct TestTableProvider {
         num_rows: usize,
@@ -183,6 +184,7 @@ mod tests {
             _batch_size: usize,
             _filters: &[Expr],
             _limit: Option<usize>,
+            _metadata_cache: Arc<dyn MetadataCache>,
         ) -> Result<std::sync::Arc<dyn crate::physical_plan::ExecutionPlan>> {
             unimplemented!()
         }

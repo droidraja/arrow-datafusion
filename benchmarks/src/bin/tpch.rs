@@ -44,6 +44,7 @@ use datafusion::physical_plan::{collect, displayable};
 use datafusion::prelude::*;
 
 use structopt::StructOpt;
+use datafusion::physical_plan::parquet::DefaultMetadataCache;
 
 #[cfg(feature = "snmalloc")]
 #[global_allocator]
@@ -222,7 +223,7 @@ async fn benchmark_datafusion(opt: DataFusionBenchmarkOpt) -> Result<Vec<RecordB
             let start = Instant::now();
 
             let memtable =
-                MemTable::load(table_provider, opt.batch_size, Some(opt.partitions))
+                MemTable::load(table_provider, opt.batch_size, Some(opt.partitions), Arc::new(DefaultMetadataCache::new()))
                     .await?;
             println!(
                 "Loaded table '{}' into memory in {} ms",
@@ -482,7 +483,7 @@ fn get_table(
         }
         "parquet" => {
             let path = format!("{}/{}", path, table);
-            Ok(Arc::new(ParquetTable::try_new(&path, max_concurrency)?))
+            Ok(Arc::new(ParquetTable::try_new(&path, max_concurrency, Arc::new(DefaultMetadataCache::new()))?))
         }
         other => {
             unimplemented!("Invalid file format '{}'", other);
