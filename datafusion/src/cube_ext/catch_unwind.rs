@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use std::fmt::{Display, Formatter};
 use crate::error::DataFusionError;
 use arrow::error::ArrowError;
 use futures::future::FutureExt;
@@ -29,6 +30,12 @@ pub struct PanicError {
 impl PanicError {
     pub fn new(msg: String) -> PanicError {
         PanicError { msg }
+    }
+}
+
+impl Display for PanicError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Panic: {}", self.msg)
     }
 }
 
