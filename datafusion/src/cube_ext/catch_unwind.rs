@@ -15,10 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::fmt::{Display, Formatter};
 use crate::error::DataFusionError;
 use arrow::error::ArrowError;
 use futures::future::FutureExt;
+use std::fmt::{Display, Formatter};
 use std::future::Future;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
