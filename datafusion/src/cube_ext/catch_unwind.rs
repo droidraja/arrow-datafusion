@@ -24,7 +24,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 
 #[derive(PartialEq, Debug)]
 pub struct PanicError {
-    msg: String,
+    pub msg: String,
 }
 
 impl PanicError {
