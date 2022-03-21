@@ -223,7 +223,7 @@ async fn benchmark_datafusion(opt: DataFusionBenchmarkOpt) -> Result<Vec<RecordB
             let start = Instant::now();
 
             let memtable =
-                MemTable::load(table_provider, opt.batch_size, Some(opt.partitions), Arc::new(DefaultMetadataCache::new()))
+                MemTable::load(table_provider, opt.batch_size, Some(opt.partitions))
                     .await?;
             println!(
                 "Loaded table '{}' into memory in {} ms",

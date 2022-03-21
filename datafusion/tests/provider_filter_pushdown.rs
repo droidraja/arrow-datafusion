@@ -30,7 +30,6 @@ use datafusion::physical_plan::{ExecutionPlan, Partitioning, SendableRecordBatch
 use datafusion::prelude::*;
 use datafusion::scalar::ScalarValue;
 use std::sync::Arc;
-use datafusion::physical_plan::parquet::MetadataCache;
 
 fn create_batch(value: i32, num_rows: usize) -> Result<RecordBatch> {
     let mut builder = Int32Builder::new(num_rows);
@@ -108,7 +107,6 @@ impl TableProvider for CustomProvider {
         _: usize,
         filters: &[Expr],
         _: Option<usize>,
-        _: Arc<dyn MetadataCache>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
         match &filters[0] {
             Expr::BinaryExpr { right, .. } => {

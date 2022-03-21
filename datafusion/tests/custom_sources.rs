@@ -44,7 +44,6 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use async_trait::async_trait;
-use datafusion::physical_plan::parquet::MetadataCache;
 
 //// Custom source dataframe tests ////
 
