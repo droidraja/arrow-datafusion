@@ -3178,7 +3178,6 @@ mod tests {
                 _: usize,
                 _: &[Expr],
                 _: Option<usize>,
-                _: Arc<dyn MetadataCache>,
             ) -> Result<Arc<dyn ExecutionPlan>> {
                 unimplemented!()
             }

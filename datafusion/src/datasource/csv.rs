@@ -45,7 +45,6 @@ use crate::error::{DataFusionError, Result};
 use crate::logical_plan::Expr;
 use crate::physical_plan::csv::CsvExec;
 pub use crate::physical_plan::csv::CsvReadOptions;
-use crate::physical_plan::parquet::MetadataCache;
 use crate::physical_plan::{common, ExecutionPlan};
 
 /// Represents a CSV file with a provided schema
@@ -178,7 +177,6 @@ impl TableProvider for CsvFile {
         batch_size: usize,
         _filters: &[Expr],
         limit: Option<usize>,
-        _metadata_cache: Arc<dyn MetadataCache>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
         let opts = CsvReadOptions::new()
             .schema(&self.schema)

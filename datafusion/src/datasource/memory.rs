@@ -32,7 +32,6 @@ use crate::error::{DataFusionError, Result};
 use crate::logical_plan::Expr;
 use crate::physical_plan::common;
 use crate::physical_plan::memory::MemoryExec;
-use crate::physical_plan::parquet::MetadataCache;
 use crate::physical_plan::ExecutionPlan;
 use crate::{
     cube_ext,
@@ -115,10 +114,9 @@ impl MemTable {
         t: Arc<dyn TableProvider>,
         batch_size: usize,
         output_partitions: Option<usize>,
-        metadata_cache: Arc<dyn MetadataCache>,
     ) -> Result<Self> {
         let schema = t.schema();
-        let exec = t.scan(&None, batch_size, &[], None, metadata_cache)?;
+        let exec = t.scan(&None, batch_size, &[], None)?;
         let partition_count = exec.output_partitioning().partition_count();
 
         let tasks = (0..partition_count)
@@ -181,7 +179,6 @@ impl TableProvider for MemTable {
         _batch_size: usize,
         _filters: &[Expr],
         _limit: Option<usize>,
-        _metadata_cache: Arc<dyn MetadataCache>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
         let columns: Vec<usize> = match projection {
             Some(p) => p.clone(),
@@ -233,7 +230,6 @@ mod tests {
     use arrow::datatypes::{DataType, Field, Schema};
     use futures::StreamExt;
     use std::collections::HashMap;
-    use crate::physical_plan::parquet::DefaultMetadataCache;
 
     #[tokio::test]
     async fn test_with_projection() -> Result<()> {
@@ -288,7 +284,7 @@ mod tests {
         );
 
         // scan with projection
-        let exec = provider.scan(&Some(vec![2, 1]), 1024, &[], None, Arc::new(DefaultMetadataCache::new()))?;
+        let exec = provider.scan(&Some(vec![2, 1]), 1024, &[], None)?;
         let mut it = exec.execute(0).await?;
         let batch2 = it.next().await.unwrap()?;
         assert_eq!(2, batch2.schema().fields().len());
@@ -318,7 +314,7 @@ mod tests {
 
         let provider = MemTable::try_new(schema, vec![vec![batch]])?;
 
-        let exec = provider.scan(&None, 1024, &[], None, Arc::new(DefaultMetadataCache::new()))?;
+        let exec = provider.scan(&None, 1024, &[], None)?;
         let mut it = exec.execute(0).await?;
         let batch1 = it.next().await.unwrap()?;
         assert_eq!(3, batch1.schema().fields().len());
@@ -348,7 +344,7 @@ mod tests {
 
         let projection: Vec<usize> = vec![0, 4];
 
-        match provider.scan(&Some(projection), 1024, &[], None, Arc::new(DefaultMetadataCache::new())) {
+        match provider.scan(&Some(projection), 1024, &[], None) {
             Err(DataFusionError::Internal(e)) => {
                 assert_eq!("\"Projection index out of range\"", format!("{:?}", e))
             }
@@ -469,7 +465,7 @@ mod tests {
         let provider =
             MemTable::try_new(Arc::new(merged_schema), vec![vec![batch1, batch2]])?;
 
-        let exec = provider.scan(&None, 1024, &[], None, Arc::new(DefaultMetadataCache::new()))?;
+        let exec = provider.scan(&None, 1024, &[], None)?;
         let mut it = exec.execute(0).await?;
         let batch1 = it.next().await.unwrap()?;
         assert_eq!(3, batch1.schema().fields().len());

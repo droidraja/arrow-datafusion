@@ -26,7 +26,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::physical_plan::parquet::MetadataCache;
 use crate::{
     datasource::{Source, TableProvider},
     error::{DataFusionError, Result},
@@ -122,7 +121,6 @@ impl TableProvider for NdJsonFile {
         batch_size: usize,
         _filters: &[crate::logical_plan::Expr],
         limit: Option<usize>,
-        _metadata_cache: Arc<dyn MetadataCache>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
         let opts = NdJsonReadOptions {
             schema: Some(self.schema.clone()),

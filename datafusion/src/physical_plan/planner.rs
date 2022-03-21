@@ -362,7 +362,6 @@ impl DefaultPhysicalPlanner {
                     batch_size,
                     &filters,
                     *limit,
-                    ctx_state.metadata_cache.clone(),
                 )
             }
             LogicalPlan::Window {

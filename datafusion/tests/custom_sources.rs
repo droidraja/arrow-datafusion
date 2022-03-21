@@ -163,7 +163,6 @@ impl TableProvider for CustomTableProvider {
         _batch_size: usize,
         _filters: &[Expr],
         _limit: Option<usize>,
-        _metadata_cache: Arc<dyn MetadataCache>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
         Ok(Arc::new(CustomExecutionPlan {
             projection: projection.clone(),

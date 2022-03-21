@@ -612,7 +612,6 @@ mod tests {
     use crate::test::*;
     use crate::{logical_plan::col, prelude::JoinType};
     use arrow::datatypes::SchemaRef;
-    use crate::physical_plan::parquet::MetadataCache;
 
     fn optimize_plan(plan: &LogicalPlan) -> LogicalPlan {
         let rule = FilterPushDown::new();
@@ -1272,7 +1271,6 @@ mod tests {
             _: usize,
             _: &[Expr],
             _: Option<usize>,
-            _: Arc<dyn MetadataCache>,
         ) -> Result<Arc<dyn ExecutionPlan>> {
             unimplemented!()
         }

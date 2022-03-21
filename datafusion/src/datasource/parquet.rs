@@ -39,6 +39,7 @@ pub struct ParquetTable {
     statistics: Statistics,
     max_concurrency: usize,
     enable_pruning: bool,
+    metadata_cache: Arc<dyn MetadataCache>,
 }
 
 impl ParquetTable {
@@ -50,7 +51,7 @@ impl ParquetTable {
     ) -> Result<Self> {
         let path = path.into();
         let parquet_exec =
-            ParquetExec::try_from_path(&path, None, None, 0, 1, None, metadata_cache)?;
+            ParquetExec::try_from_path(&path, None, None, 0, 1, None, metadata_cache.clone())?;
         let schema = parquet_exec.schema();
         Ok(Self {
             path,
@@ -58,6 +59,7 @@ impl ParquetTable {
             statistics: parquet_exec.statistics().to_owned(),
             max_concurrency,
             enable_pruning: true,
+            metadata_cache,
         })
     }
 
@@ -103,7 +105,6 @@ impl TableProvider for ParquetTable {
         batch_size: usize,
         filters: &[Expr],
         limit: Option<usize>,
-        metadata_cache: Arc<dyn MetadataCache>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
         // If enable pruning then combine the filters to build the predicate.
         // If disable pruning then set the predicate to None, thus readers
@@ -122,7 +123,7 @@ impl TableProvider for ParquetTable {
                 .unwrap_or(batch_size),
             self.max_concurrency,
             limit,
-            metadata_cache,
+            self.metadata_cache.clone(),
         )?))
     }
 
@@ -150,7 +151,7 @@ mod tests {
     async fn read_small_batches() -> Result<()> {
         let table = load_table("alltypes_plain.parquet")?;
         let projection = None;
-        let exec = table.scan(&projection, 2, &[], None, Arc::new(DefaultMetadataCache::new()))?;
+        let exec = table.scan(&projection, 2, &[], None)?;
         let stream = exec.execute(0).await?;
 
         let _ = stream
@@ -371,7 +372,7 @@ mod tests {
         table: Arc<dyn TableProvider>,
         projection: &Option<Vec<usize>>,
     ) -> Result<RecordBatch> {
-        let exec = table.scan(projection, 1024, &[], None, Arc::new(DefaultMetadataCache::new()))?;
+        let exec = table.scan(projection, 1024, &[], None)?;
         let mut it = exec.execute(0).await?;
         it.next()
             .await
