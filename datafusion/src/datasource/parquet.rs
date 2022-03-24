@@ -27,7 +27,7 @@ use crate::datasource::datasource::Statistics;
 use crate::datasource::TableProvider;
 use crate::error::Result;
 use crate::logical_plan::{combine_filters, Expr};
-use crate::physical_plan::parquet::{MetadataCache, ParquetExec};
+use crate::physical_plan::parquet::{ParquetMetadataCache, ParquetExec};
 use crate::physical_plan::ExecutionPlan;
 
 use super::datasource::TableProviderFilterPushDown;
@@ -39,7 +39,7 @@ pub struct ParquetTable {
     statistics: Statistics,
     max_concurrency: usize,
     enable_pruning: bool,
-    metadata_cache: Arc<dyn MetadataCache>,
+    parquet_metadata_cache: Arc<dyn ParquetMetadataCache>,
 }
 
 impl ParquetTable {
@@ -47,11 +47,11 @@ impl ParquetTable {
     pub fn try_new(
         path: impl Into<String>,
         max_concurrency: usize,
-        metadata_cache: Arc<dyn MetadataCache>,
+        parquet_metadata_cache: Arc<dyn ParquetMetadataCache>,
     ) -> Result<Self> {
         let path = path.into();
         let parquet_exec =
-            ParquetExec::try_from_path(&path, None, None, 0, 1, None, metadata_cache.clone())?;
+            ParquetExec::try_from_path(&path, None, None, 0, 1, None, parquet_metadata_cache.clone())?;
         let schema = parquet_exec.schema();
         Ok(Self {
             path,
@@ -59,7 +59,7 @@ impl ParquetTable {
             statistics: parquet_exec.statistics().to_owned(),
             max_concurrency,
             enable_pruning: true,
-            metadata_cache,
+            parquet_metadata_cache: parquet_metadata_cache,
         })
     }
 
@@ -123,7 +123,7 @@ impl TableProvider for ParquetTable {
                 .unwrap_or(batch_size),
             self.max_concurrency,
             limit,
-            self.metadata_cache.clone(),
+            self.parquet_metadata_cache.clone(),
         )?))
     }
 
@@ -145,7 +145,7 @@ mod tests {
     };
     use arrow::record_batch::RecordBatch;
     use futures::StreamExt;
-    use crate::physical_plan::parquet::DefaultMetadataCache;
+    use crate::physical_plan::parquet::NoopParquetMetadataCache;
 
     #[tokio::test]
     async fn read_small_batches() -> Result<()> {
@@ -364,7 +364,7 @@ mod tests {
     fn load_table(name: &str) -> Result<Arc<dyn TableProvider>> {
         let testdata = crate::test_util::parquet_test_data();
         let filename = format!("{}/{}", testdata, name);
-        let table = ParquetTable::try_new(&filename, 2, Arc::new(DefaultMetadataCache::new()))?;
+        let table = ParquetTable::try_new(&filename, 2, NoopParquetMetadataCache::new())?;
         Ok(Arc::new(table))
     }
 

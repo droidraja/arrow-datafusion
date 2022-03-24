@@ -110,7 +110,7 @@ mod tests {
 
     use super::*;
     use crate::datasource::datasource::Statistics;
-    use crate::physical_plan::parquet::{DefaultMetadataCache, ParquetExec, ParquetExecMetrics, ParquetPartition};
+    use crate::physical_plan::parquet::{NoopParquetMetadataCache, ParquetExec, ParquetExecMetrics, ParquetPartition};
     use crate::physical_plan::projection::ProjectionExec;
 
     #[test]
@@ -129,7 +129,7 @@ mod tests {
                 None,
                 2048,
                 None,
-                Arc::new(DefaultMetadataCache::new()),
+                NoopParquetMetadataCache::new(),
             )),
         )?;
 
@@ -168,7 +168,7 @@ mod tests {
                     None,
                     2048,
                     None,
-                    Arc::new(DefaultMetadataCache::new()),
+                    NoopParquetMetadataCache::new(),
                 )),
             )?),
         )?;

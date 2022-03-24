@@ -68,7 +68,7 @@ use crate::physical_optimizer::repartition::Repartition;
 use crate::cube_ext::joinagg::FoldCrossJoinAggregate;
 use crate::physical_plan::csv::CsvReadOptions;
 use crate::physical_plan::parquet::{
-    DefaultMetadataCache, LruMetadataCache, MetadataCache,
+    NoopParquetMetadataCache, LruParquetMetadataCache, ParquetMetadataCache,
 };
 use crate::physical_plan::planner::DefaultPhysicalPlanner;
 use crate::physical_plan::udf::ScalarUDF;
@@ -159,10 +159,10 @@ impl ExecutionContext {
                 .register_catalog(config.default_catalog.clone(), default_catalog);
         }
 
-        let metadata_cache: Arc<dyn MetadataCache> =
+        let parquet_metadata_cache: Arc<dyn ParquetMetadataCache> =
             match config.parquet_metadata_cache_capacity {
-                Some(capacity) => Arc::new(LruMetadataCache::new(capacity)),
-                None => Arc::new(DefaultMetadataCache::new()),
+                Some(capacity) => LruParquetMetadataCache::new(capacity),
+                None => NoopParquetMetadataCache::new(),
             };
 
         Self {
@@ -173,7 +173,7 @@ impl ExecutionContext {
                 aggregate_functions: HashMap::new(),
                 config,
                 execution_props: ExecutionProps::new(),
-                metadata_cache: metadata_cache,
+                parquet_metadata_cache,
             })),
         }
     }
@@ -302,7 +302,7 @@ impl ExecutionContext {
                 filename,
                 None,
                 self.state.lock().unwrap().config.concurrency,
-                self.state.lock().unwrap().metadata_cache.clone(),
+                self.state.lock().unwrap().parquet_metadata_cache.clone(),
             )?
             .build()?,
         )))
@@ -339,7 +339,7 @@ impl ExecutionContext {
             ParquetTable::try_new(
                 filename,
                 m.config.concurrency,
-                m.metadata_cache.clone(),
+                m.parquet_metadata_cache.clone(),
             )?
             .with_enable_pruning(m.config.parquet_pruning)
         };
@@ -866,8 +866,8 @@ pub struct ExecutionContextState {
     pub config: ExecutionConfig,
     /// Execution properties
     pub execution_props: ExecutionProps,
-    /// Cache for (parquet) metadata
-    pub metadata_cache: Arc<dyn MetadataCache>,
+    /// Cache for parquet metadata
+    pub parquet_metadata_cache: Arc<dyn ParquetMetadataCache>,
 }
 
 impl ExecutionProps {
@@ -895,7 +895,7 @@ impl ExecutionContextState {
             aggregate_functions: HashMap::new(),
             config: ExecutionConfig::new(),
             execution_props: ExecutionProps::new(),
-            metadata_cache: Arc::new(DefaultMetadataCache::new()),
+            parquet_metadata_cache: NoopParquetMetadataCache::new(),
         }
     }
 

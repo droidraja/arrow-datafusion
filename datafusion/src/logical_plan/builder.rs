@@ -42,7 +42,7 @@ use crate::logical_plan::{
     columnize_expr, normalize_col, normalize_cols, Column, DFField, DFSchema,
     DFSchemaRef, Partitioning,
 };
-use crate::physical_plan::parquet::MetadataCache;
+use crate::physical_plan::parquet::ParquetMetadataCache;
 use crate::sql::utils::find_columns;
 use arrow::datatypes::{DataType, TimeUnit};
 
@@ -143,7 +143,7 @@ impl LogicalPlanBuilder {
         path: impl Into<String>,
         projection: Option<Vec<usize>>,
         max_concurrency: usize,
-        metadata_cache: Arc<dyn MetadataCache>,
+        parquet_metadata_cache: Arc<dyn ParquetMetadataCache>,
     ) -> Result<Self> {
         let path = path.into();
         Self::scan_parquet_with_name(
@@ -151,7 +151,7 @@ impl LogicalPlanBuilder {
             projection,
             max_concurrency,
             path,
-            metadata_cache,
+            parquet_metadata_cache,
         )
     }
 
@@ -161,12 +161,12 @@ impl LogicalPlanBuilder {
         projection: Option<Vec<usize>>,
         max_concurrency: usize,
         table_name: impl Into<String>,
-        metadata_cache: Arc<dyn MetadataCache>,
+        parquet_metadata_cache: Arc<dyn ParquetMetadataCache>,
     ) -> Result<Self> {
         let provider = Arc::new(ParquetTable::try_new(
             path,
             max_concurrency,
-            metadata_cache,
+            parquet_metadata_cache,
         )?);
         Self::scan(table_name, provider, projection)
     }
