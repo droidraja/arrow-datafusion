@@ -52,7 +52,7 @@ ahash = "0.7"
 hashbrown = { version = "0.11", features = ["raw"] }
 arrow = { git = "https://github.com/cube-js/arrow-rs.git", rev = "114eb35848ebbb70cbe21d77c488e8320a1de7b5", features = ["prettyprint"] }
 parquet = { git = "https://github.com/cube-js/arrow-rs.git", rev = "114eb35848ebbb70cbe21d77c488e8320a1de7b5", features = ["arrow"] }
-sqlparser = { git = 'https://github.com/cube-js/sqlparser-rs.git', rev = "d6250ba4ca315d73d8b52fb67d1a54ca11351348" }
+sqlparser = { git = 'https://github.com/cube-js/sqlparser-rs.git', rev = "dd5df3a1ced49bc8d77a7d677ecd509efd8a5bca" }
 paste = "^1.0"
 num_cpus = "1.13.0"
 chrono = "0.4"
