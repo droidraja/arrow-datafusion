@@ -68,7 +68,7 @@ use crate::physical_optimizer::repartition::Repartition;
 use crate::cube_ext::joinagg::FoldCrossJoinAggregate;
 use crate::physical_plan::csv::CsvReadOptions;
 use crate::physical_plan::parquet::{
-    NoopParquetMetadataCache, LruParquetMetadataCache, ParquetMetadataCache,
+    NoopParquetMetadataCache, ParquetMetadataCache,
 };
 use crate::physical_plan::planner::DefaultPhysicalPlanner;
 use crate::physical_plan::udf::ScalarUDF;
@@ -159,11 +159,7 @@ impl ExecutionContext {
                 .register_catalog(config.default_catalog.clone(), default_catalog);
         }
 
-        let parquet_metadata_cache: Arc<dyn ParquetMetadataCache> =
-            match config.parquet_metadata_cache_capacity {
-                Some(capacity) => LruParquetMetadataCache::new(capacity),
-                None => NoopParquetMetadataCache::new(),
-            };
+        let parquet_metadata_cache: Arc<dyn ParquetMetadataCache> = config.parquet_metadata_cache.clone();
 
         Self {
             state: Arc::new(Mutex::new(ExecutionContextState {
@@ -690,8 +686,8 @@ pub struct ExecutionConfig {
     pub repartition_windows: bool,
     /// Should Datafusion parquet reader using the predicate to prune data
     parquet_pruning: bool,
-    /// Parquet MetadataCache capacity
-    parquet_metadata_cache_capacity: Option<usize>,
+    /// Parquet MetadataCache
+    parquet_metadata_cache: Arc<dyn ParquetMetadataCache>,
 }
 
 impl Default for ExecutionConfig {
@@ -725,7 +721,7 @@ impl Default for ExecutionConfig {
             repartition_aggregations: true,
             repartition_windows: true,
             parquet_pruning: true,
-            parquet_metadata_cache_capacity: None,
+            parquet_metadata_cache: NoopParquetMetadataCache::new(),
         }
     }
 }
@@ -835,9 +831,9 @@ impl ExecutionConfig {
         self
     }
 
-    /// Enables Parquet metadata caching, with the given capacity.
-    pub fn with_parquet_metadata_cache_capacity(mut self, capacity: usize) -> Self {
-        self.parquet_metadata_cache_capacity = Some(capacity);
+    /// Configures Parquet metadata caching.
+    pub fn with_parquet_metadata_cache(mut self, parquet_metadata_cache: Arc<dyn ParquetMetadataCache>) -> Self {
+        self.parquet_metadata_cache = parquet_metadata_cache;
         self
     }
 }

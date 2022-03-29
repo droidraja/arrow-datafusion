@@ -130,9 +130,42 @@ pub trait ParquetMetadataCache: Debug + Sync + Send {
     fn arrow_reader(&self, filename: &str) -> Result<ParquetFileArrowReader> {
         let file = File::open(filename)?;
         let metadata = self.metadata(filename, &file)?;
-        let file_reader =
-            Arc::new(SerializedFileReader::new_with_metadata(file, metadata));
+        let file_reader = Arc::new(SerializedFileReader::new_with_metadata(file, metadata));
         Ok(ParquetFileArrowReader::new(file_reader))
+    }
+
+    /// Returns a copy of the cache stats.
+    fn stats(&self) -> ParquetMetadataCacheStats;
+}
+
+/// Stats for ParquetMetadataCache.
+#[derive(Clone, Debug)]
+pub struct ParquetMetadataCacheStats {
+    hits: u64,
+    misses: u64,
+}
+
+impl ParquetMetadataCacheStats {
+    /// Returns a new ParquetMetadataCacheStats
+    pub fn new() -> Self { ParquetMetadataCacheStats { hits: 0, misses: 0 } }
+
+    /// Returns the number of cache reads.
+    pub fn reads(&self) -> u64 { self.hits + self.misses }
+
+    /// Returns the number of cache hits.
+    pub fn hits(&self) -> u64 { self.hits }
+
+    /// Returns the numbere of cache misses.
+    pub fn misses(&self) -> u64 { self.misses }
+
+    /// Increments the number of cache hits.
+    pub fn hit(&mut self) {
+        self.hits += 1;
+    }
+
+    /// Increments the number of cache misses.
+    pub fn miss(&mut self) {
+        self.misses += 1;
     }
 }
 
@@ -151,21 +184,32 @@ impl ParquetMetadataCache for NoopParquetMetadataCache {
     fn metadata(&self, _key: &str, file: &File) -> Result<Arc<ParquetMetaData>> {
         Ok(Arc::new(footer::parse_metadata(file)?))
     }
+
+    fn stats(&self) -> ParquetMetadataCacheStats {
+        ParquetMetadataCacheStats::new()
+    }
 }
 
 /// LruMetadataCache, caches parquet metadata.
 #[derive(Debug)]
 pub struct LruParquetMetadataCache {
-    parquet_metadata_cache: Mutex<lru::LruCache<String, Arc<ParquetMetaData>>>,
+    data: Mutex<LruParquetMetadataCacheData>,
+}
+
+#[derive(Debug)]
+struct LruParquetMetadataCacheData {
+    cache: lru::LruCache<String, Arc<ParquetMetaData>>,
+    stats: ParquetMetadataCacheStats,
 }
 
 impl LruParquetMetadataCache {
     /// Creates a new LruMetadataCache
     pub fn new(metadata_cache_capacity: usize) -> Arc<Self> {
         Arc::new(LruParquetMetadataCache {
-            parquet_metadata_cache: Mutex::new(lru::LruCache::new(
-                metadata_cache_capacity,
-            )),
+            data: Mutex::new(LruParquetMetadataCacheData {
+                cache: lru::LruCache::new(metadata_cache_capacity),
+                stats: ParquetMetadataCacheStats::new(),
+            })
         })
     }
 }
@@ -173,18 +217,26 @@ impl LruParquetMetadataCache {
 impl ParquetMetadataCache for LruParquetMetadataCache {
     fn metadata(&self, key: &str, file: &File) -> Result<Arc<ParquetMetaData>> {
         {
-            let mut cache = self.parquet_metadata_cache.lock().unwrap();
-            let metadata = cache.get(&key.to_string());
+            let mut data = self.data.lock().unwrap();
+            let metadata = data.cache.get(&key.to_string());
             if let Some(metadata) = metadata {
-                return Ok(metadata.clone());
+                let result = Ok(metadata.clone());
+                data.stats.hit();
+                return result;
+            } else {
+                data.stats.miss();
             }
         }
         let metadata = footer::parse_metadata(file.clone()).map(|m| Arc::new(m))?;
         {
-            let mut cache = self.parquet_metadata_cache.lock().unwrap();
-            cache.put(key.to_string(), metadata.clone());
+            let mut data = self.data.lock().unwrap();
+            data.cache.put(key.to_string(), metadata.clone());
         }
         Ok(metadata)
+    }
+
+    fn stats(&self) -> ParquetMetadataCacheStats {
+        self.data.lock().unwrap().stats.clone()
     }
 }
 

@@ -16,7 +16,6 @@
 // under the License.
 
 use std::pin::Pin;
-use std::sync::Arc;
 
 use arrow_flight::SchemaAsIpc;
 use futures::Stream;
