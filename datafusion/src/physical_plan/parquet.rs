@@ -227,7 +227,7 @@ impl ParquetMetadataCache for LruParquetMetadataCache {
                 data.stats.miss();
             }
         }
-        let metadata = footer::parse_metadata(file.clone()).map(|m| Arc::new(m))?;
+        let metadata = Arc::new(footer::parse_metadata(file)?);
         {
             let mut data = self.data.lock().unwrap();
             data.cache.put(key.to_string(), metadata.clone());
