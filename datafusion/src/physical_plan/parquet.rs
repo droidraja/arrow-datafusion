@@ -130,7 +130,7 @@ pub trait ParquetMetadataCache: Debug + Sync + Send {
     fn arrow_reader(&self, filename: &str) -> Result<ParquetFileArrowReader> {
         let file = File::open(filename)?;
         let metadata = self.metadata(filename, &file)?;
-        let file_reader = Arc::new(SerializedFileReader::new_with_metadata(file, metadata));
+        let file_reader = Arc::new(SerializedFileReader::new_with_metadata(file, (*metadata).clone()));
         Ok(ParquetFileArrowReader::new(file_reader))
     }
 
