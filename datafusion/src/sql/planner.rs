@@ -80,12 +80,18 @@ pub trait ContextProvider {
 /// SQL query planner
 pub struct SqlToRel<'a, S: ContextProvider> {
     schema_provider: &'a S,
+    table_columns_precedence_over_projection: bool,
 }
 
 impl<'a, S: ContextProvider> SqlToRel<'a, S> {
     /// Create a new query planner
     pub fn new(schema_provider: &'a S) -> Self {
-        SqlToRel { schema_provider }
+        Self::new_with_options(schema_provider, false)
+    }
+
+    /// Create a new query planner
+    pub fn new_with_options(schema_provider: &'a S, table_columns_precedence_over_projection: bool) -> Self {
+        SqlToRel { schema_provider, table_columns_precedence_over_projection }
     }
 
     /// Generate a logical plan from an DataFusion SQL statement
@@ -684,11 +690,21 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
 
         // having and group by clause may reference aliases defined in select projection
         let projected_plan = self.project(plan.clone(), select_exprs.clone())?;
-        let mut combined_schema = (**projected_plan.schema()).clone();
-        combined_schema.merge(plan.schema());
+        let combined_schema = if self.table_columns_precedence_over_projection {
+            let mut combined_schema = (**plan.schema()).clone();
+            combined_schema.merge(projected_plan.schema());
+            combined_schema
+        } else {
+            let mut combined_schema = (**projected_plan.schema()).clone();
+            combined_schema.merge(plan.schema());
+            combined_schema
+        };
 
         // this alias map is resolved and looked up in both having exprs and group by exprs
-        let alias_map = extract_aliases(&select_exprs);
+        let mut alias_map = extract_aliases(&select_exprs);
+        if self.table_columns_precedence_over_projection {
+            alias_map = alias_map.into_iter().filter(|(alias, _)| plan.schema().field_with_unqualified_name(alias).is_err()).collect();
+        }
 
         // Optionally the HAVING expression.
         let having_expr_opt = select
@@ -713,7 +729,11 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                 //   SELECT c1, MAX(c2) AS m FROM t GROUP BY c1 HAVING MAX(c2) > 10;
                 //
                 let having_expr = resolve_aliases_to_exprs(&having_expr, &alias_map)?;
-                normalize_col(having_expr, &projected_plan)
+                if self.table_columns_precedence_over_projection {
+                    normalize_col(having_expr, &plan)
+                } else {
+                    normalize_col(having_expr, &projected_plan)
+                }
             })
             .transpose()?;
 
@@ -737,7 +757,11 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                 let group_by_expr =
                     resolve_positions_to_exprs(&group_by_expr, &select_exprs)
                         .unwrap_or(group_by_expr);
-                let group_by_expr = normalize_col(group_by_expr, &projected_plan)?;
+                let group_by_expr = if self.table_columns_precedence_over_projection {
+                    normalize_col(group_by_expr, &plan)?
+                } else {
+                    normalize_col(group_by_expr, &projected_plan)?
+                };
                 self.validate_schema_satisfies_exprs(
                     plan.schema(),
                     &[group_by_expr.clone()],
