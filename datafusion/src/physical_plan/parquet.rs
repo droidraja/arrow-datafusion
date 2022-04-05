@@ -130,7 +130,10 @@ pub trait ParquetMetadataCache: Debug + Sync + Send {
     fn arrow_reader(&self, filename: &str) -> Result<ParquetFileArrowReader> {
         let file = File::open(filename)?;
         let metadata = self.metadata(filename, &file)?;
-        let file_reader = Arc::new(SerializedFileReader::new_with_metadata(file, (*metadata).clone()));
+        let file_reader = Arc::new(SerializedFileReader::new_with_metadata(
+            file,
+            (*metadata).clone(),
+        ));
         Ok(ParquetFileArrowReader::new(file_reader))
     }
 
@@ -147,16 +150,24 @@ pub struct ParquetMetadataCacheStats {
 
 impl ParquetMetadataCacheStats {
     /// Returns a new ParquetMetadataCacheStats
-    pub fn new() -> Self { ParquetMetadataCacheStats { hits: 0, misses: 0 } }
+    pub fn new() -> Self {
+        ParquetMetadataCacheStats { hits: 0, misses: 0 }
+    }
 
     /// Returns the number of cache reads.
-    pub fn reads(&self) -> u64 { self.hits + self.misses }
+    pub fn reads(&self) -> u64 {
+        self.hits + self.misses
+    }
 
     /// Returns the number of cache hits.
-    pub fn hits(&self) -> u64 { self.hits }
+    pub fn hits(&self) -> u64 {
+        self.hits
+    }
 
     /// Returns the numbere of cache misses.
-    pub fn misses(&self) -> u64 { self.misses }
+    pub fn misses(&self) -> u64 {
+        self.misses
+    }
 
     /// Increments the number of cache hits.
     pub fn hit(&mut self) {
@@ -209,7 +220,7 @@ impl LruParquetMetadataCache {
             data: Mutex::new(LruParquetMetadataCacheData {
                 cache: lru::LruCache::new(metadata_cache_capacity),
                 stats: ParquetMetadataCacheStats::new(),
-            })
+            }),
         })
     }
 }
@@ -306,8 +317,7 @@ impl ParquetExec {
             let mut total_files = 0;
             for filename in &filenames {
                 total_files += 1;
-                let mut arrow_reader =
-                    metadata_cache.arrow_reader(filename.as_str())?;
+                let mut arrow_reader = metadata_cache.arrow_reader(filename.as_str())?;
                 let meta_data = arrow_reader.get_metadata();
                 // collect all the unique schemas in this data set
                 let schema = arrow_reader.get_schema()?;

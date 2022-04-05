@@ -43,8 +43,8 @@ use datafusion::physical_plan::display::DisplayableExecutionPlan;
 use datafusion::physical_plan::{collect, displayable};
 use datafusion::prelude::*;
 
-use structopt::StructOpt;
 use datafusion::physical_plan::parquet::NoopParquetMetadataCache;
+use structopt::StructOpt;
 
 #[cfg(feature = "snmalloc")]
 #[global_allocator]
@@ -483,7 +483,11 @@ fn get_table(
         }
         "parquet" => {
             let path = format!("{}/{}", path, table);
-            Ok(Arc::new(ParquetTable::try_new(&path, max_concurrency, NoopParquetMetadataCache::new())?))
+            Ok(Arc::new(ParquetTable::try_new(
+                &path,
+                max_concurrency,
+                NoopParquetMetadataCache::new(),
+            )?))
         }
         other => {
             unimplemented!("Invalid file format '{}'", other);

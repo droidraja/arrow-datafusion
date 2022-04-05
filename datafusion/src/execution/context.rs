@@ -67,9 +67,7 @@ use crate::physical_optimizer::repartition::Repartition;
 
 use crate::cube_ext::joinagg::FoldCrossJoinAggregate;
 use crate::physical_plan::csv::CsvReadOptions;
-use crate::physical_plan::parquet::{
-    NoopParquetMetadataCache, ParquetMetadataCache,
-};
+use crate::physical_plan::parquet::{NoopParquetMetadataCache, ParquetMetadataCache};
 use crate::physical_plan::planner::DefaultPhysicalPlanner;
 use crate::physical_plan::udf::ScalarUDF;
 use crate::physical_plan::ExecutionPlan;
@@ -159,7 +157,8 @@ impl ExecutionContext {
                 .register_catalog(config.default_catalog.clone(), default_catalog);
         }
 
-        let parquet_metadata_cache: Arc<dyn ParquetMetadataCache> = config.parquet_metadata_cache.clone();
+        let parquet_metadata_cache: Arc<dyn ParquetMetadataCache> =
+            config.parquet_metadata_cache.clone();
 
         Self {
             state: Arc::new(Mutex::new(ExecutionContextState {
@@ -832,7 +831,10 @@ impl ExecutionConfig {
     }
 
     /// Configures Parquet metadata caching.
-    pub fn with_parquet_metadata_cache(mut self, parquet_metadata_cache: Arc<dyn ParquetMetadataCache>) -> Self {
+    pub fn with_parquet_metadata_cache(
+        mut self,
+        parquet_metadata_cache: Arc<dyn ParquetMetadataCache>,
+    ) -> Self {
         self.parquet_metadata_cache = parquet_metadata_cache;
         self
     }

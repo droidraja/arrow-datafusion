@@ -27,7 +27,7 @@ use crate::datasource::datasource::Statistics;
 use crate::datasource::TableProvider;
 use crate::error::Result;
 use crate::logical_plan::{combine_filters, Expr};
-use crate::physical_plan::parquet::{ParquetMetadataCache, ParquetExec};
+use crate::physical_plan::parquet::{ParquetExec, ParquetMetadataCache};
 use crate::physical_plan::ExecutionPlan;
 
 use super::datasource::TableProviderFilterPushDown;
@@ -50,8 +50,15 @@ impl ParquetTable {
         parquet_metadata_cache: Arc<dyn ParquetMetadataCache>,
     ) -> Result<Self> {
         let path = path.into();
-        let parquet_exec =
-            ParquetExec::try_from_path(&path, None, None, 0, 1, None, parquet_metadata_cache.clone())?;
+        let parquet_exec = ParquetExec::try_from_path(
+            &path,
+            None,
+            None,
+            0,
+            1,
+            None,
+            parquet_metadata_cache.clone(),
+        )?;
         let schema = parquet_exec.schema();
         Ok(Self {
             path,
@@ -139,13 +146,13 @@ impl TableProvider for ParquetTable {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::physical_plan::parquet::NoopParquetMetadataCache;
     use arrow::array::{
         BinaryArray, BooleanArray, Float32Array, Float64Array, Int32Array,
         TimestampNanosecondArray,
     };
     use arrow::record_batch::RecordBatch;
     use futures::StreamExt;
-    use crate::physical_plan::parquet::NoopParquetMetadataCache;
 
     #[tokio::test]
     async fn read_small_batches() -> Result<()> {

@@ -110,7 +110,9 @@ mod tests {
 
     use super::*;
     use crate::datasource::datasource::Statistics;
-    use crate::physical_plan::parquet::{NoopParquetMetadataCache, ParquetExec, ParquetExecMetrics, ParquetPartition};
+    use crate::physical_plan::parquet::{
+        NoopParquetMetadataCache, ParquetExec, ParquetExecMetrics, ParquetPartition,
+    };
     use crate::physical_plan::projection::ProjectionExec;
 
     #[test]
