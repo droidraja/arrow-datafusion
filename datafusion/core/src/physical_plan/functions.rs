@@ -49,10 +49,10 @@ use arrow::{
 };
 use datafusion_expr::ScalarFunctionImplementation;
 pub use datafusion_expr::{BuiltinScalarFunction, Signature, TypeSignature, Volatility};
-use datafusion_physical_expr::array_expressions;
-use datafusion_physical_expr::datetime_expressions;
-use datafusion_physical_expr::math_expressions;
-use datafusion_physical_expr::string_expressions;
+pub use datafusion_physical_expr::array_expressions;
+pub use datafusion_physical_expr::datetime_expressions;
+pub use datafusion_physical_expr::math_expressions;
+pub use datafusion_physical_expr::string_expressions;
 use std::sync::Arc;
 use arrow::datatypes::IntervalUnit;
 
