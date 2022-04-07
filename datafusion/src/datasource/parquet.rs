@@ -27,7 +27,7 @@ use crate::datasource::datasource::Statistics;
 use crate::datasource::TableProvider;
 use crate::error::Result;
 use crate::logical_plan::{combine_filters, Expr};
-use crate::physical_plan::parquet::{ParquetExec, ParquetMetadataCache};
+use crate::physical_plan::parquet::{NoopParquetMetadataCache, ParquetExec, ParquetMetadataCache};
 use crate::physical_plan::ExecutionPlan;
 
 use super::datasource::TableProviderFilterPushDown;
@@ -47,10 +47,18 @@ impl ParquetTable {
     pub fn try_new(
         path: impl Into<String>,
         max_concurrency: usize,
+    ) -> Result<Self> {
+        ParquetTable::try_new_with_cache(path, max_concurrency, NoopParquetMetadataCache::new())
+    }
+
+    /// Same as {try_new}, but with a ParquetMetadataCache
+    pub fn try_new_with_cache(
+        path: impl Into<String>,
+        max_concurrency: usize,
         parquet_metadata_cache: Arc<dyn ParquetMetadataCache>,
     ) -> Result<Self> {
         let path = path.into();
-        let parquet_exec = ParquetExec::try_from_path(
+        let parquet_exec = ParquetExec::try_from_path_with_cache(
             &path,
             None,
             None,
@@ -121,7 +129,7 @@ impl TableProvider for ParquetTable {
         } else {
             None
         };
-        Ok(Arc::new(ParquetExec::try_from_path(
+        Ok(Arc::new(ParquetExec::try_from_path_with_cache(
             &self.path,
             projection.clone(),
             predicate,
@@ -146,7 +154,6 @@ impl TableProvider for ParquetTable {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::physical_plan::parquet::NoopParquetMetadataCache;
     use arrow::array::{
         BinaryArray, BooleanArray, Float32Array, Float64Array, Int32Array,
         TimestampNanosecondArray,
@@ -371,7 +378,7 @@ mod tests {
     fn load_table(name: &str) -> Result<Arc<dyn TableProvider>> {
         let testdata = crate::test_util::parquet_test_data();
         let filename = format!("{}/{}", testdata, name);
-        let table = ParquetTable::try_new(&filename, 2, NoopParquetMetadataCache::new())?;
+        let table = ParquetTable::try_new(&filename, 2)?;
         Ok(Arc::new(table))
     }
 

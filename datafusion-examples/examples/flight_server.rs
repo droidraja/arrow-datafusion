@@ -31,7 +31,6 @@ use arrow_flight::{
     Action, ActionType, Criteria, Empty, FlightData, FlightDescriptor, FlightInfo,
     HandshakeRequest, HandshakeResponse, PutResult, SchemaResult, Ticket,
 };
-use datafusion::physical_plan::parquet::NoopParquetMetadataCache;
 
 #[derive(Clone)]
 pub struct FlightServiceImpl {}
@@ -69,7 +68,6 @@ impl FlightService for FlightServiceImpl {
         let table = ParquetTable::try_new(
             &request.path[0],
             num_cpus::get(),
-            NoopParquetMetadataCache::new(),
         )
         .unwrap();
 

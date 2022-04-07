@@ -297,7 +297,6 @@ impl ExecutionContext {
                 filename,
                 None,
                 self.state.lock().unwrap().config.concurrency,
-                self.state.lock().unwrap().parquet_metadata_cache.clone(),
             )?
             .build()?,
         )))
@@ -331,7 +330,7 @@ impl ExecutionContext {
     pub fn register_parquet(&mut self, name: &str, filename: &str) -> Result<()> {
         let table = {
             let m = self.state.lock().unwrap();
-            ParquetTable::try_new(
+            ParquetTable::try_new_with_cache(
                 filename,
                 m.config.concurrency,
                 m.parquet_metadata_cache.clone(),

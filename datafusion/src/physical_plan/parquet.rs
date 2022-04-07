@@ -126,15 +126,14 @@ pub trait ParquetMetadataCache: Debug + Sync + Send {
     /// Returns the metadata for the given file, possibly cached on key
     fn metadata(&self, key: &str, file: &File) -> Result<Arc<ParquetMetaData>>;
 
-    /// Creates a ParquetFileArrowReader for the given filename
-    fn arrow_reader(&self, filename: &str) -> Result<ParquetFileArrowReader> {
+    /// Creates a FileReader for the given filename
+    fn file_reader(&self, filename: &str) -> Result<SerializedFileReader<File>> {
         let file = File::open(filename)?;
         let metadata = self.metadata(filename, &file)?;
-        let file_reader = Arc::new(SerializedFileReader::new_with_metadata(
+        Ok(SerializedFileReader::new_with_metadata(
             file,
             (*metadata).clone(),
-        ));
-        Ok(ParquetFileArrowReader::new(file_reader))
+        ))
     }
 
     /// Returns a copy of the cache stats.
@@ -261,6 +260,18 @@ impl ParquetExec {
         batch_size: usize,
         max_concurrency: usize,
         limit: Option<usize>,
+    ) -> Result<Self> {
+         ParquetExec::try_from_path_with_cache(path, projection, predicate, batch_size, max_concurrency, limit, NoopParquetMetadataCache::new())
+    }
+
+    /// Same as {try_from_path}, but with a ParquetMetadataCache
+    pub fn try_from_path_with_cache(
+        path: &str,
+        projection: Option<Vec<usize>>,
+        predicate: Option<Expr>,
+        batch_size: usize,
+        max_concurrency: usize,
+        limit: Option<usize>,
         metadata_cache: Arc<dyn ParquetMetadataCache>,
     ) -> Result<Self> {
         // build a list of filenames from the specified path, which could be a single file or
@@ -276,7 +287,7 @@ impl ParquetExec {
                 .iter()
                 .map(|filename| filename.as_str())
                 .collect::<Vec<&str>>();
-            Self::try_from_files(
+            Self::try_from_files_with_cache(
                 &filenames,
                 projection,
                 predicate,
@@ -291,6 +302,18 @@ impl ParquetExec {
     /// Create a new Parquet reader execution plan based on the specified list of Parquet
     /// files
     pub fn try_from_files(
+        filenames: &[&str],
+        projection: Option<Vec<usize>>,
+        predicate: Option<Expr>,
+        batch_size: usize,
+        max_concurrency: usize,
+        limit: Option<usize>,
+    ) -> Result<Self> {
+        ParquetExec::try_from_files_with_cache(filenames, projection, predicate, batch_size, max_concurrency, limit, NoopParquetMetadataCache::new())
+    }
+
+    /// Same as {try_from_files}, but with a ParquetMetadataCache
+    pub fn try_from_files_with_cache(
         filenames: &[&str],
         projection: Option<Vec<usize>>,
         predicate: Option<Expr>,
@@ -317,7 +340,8 @@ impl ParquetExec {
             let mut total_files = 0;
             for filename in &filenames {
                 total_files += 1;
-                let mut arrow_reader = metadata_cache.arrow_reader(filename.as_str())?;
+                let file_reader = metadata_cache.file_reader(filename.as_str())?;
+                let mut arrow_reader = ParquetFileArrowReader::new(Arc::new(file_reader));
                 let meta_data = arrow_reader.get_metadata();
                 // collect all the unique schemas in this data set
                 let schema = arrow_reader.get_schema()?;
@@ -600,6 +624,7 @@ impl ExecutionPlan for ParquetExec {
         let batch_size = self.batch_size;
         let limit = self.limit;
         let tx_unwind = response_tx.clone();
+        let metadata_cache = self.metadata_cache.clone();
 
         cube_ext::spawn_blocking_mpsc_with_catch_unwind(
             move || {
@@ -611,6 +636,7 @@ impl ExecutionPlan for ParquetExec {
                     batch_size,
                     response_tx,
                     limit,
+                    metadata_cache,
                 ) {
                     println!("Parquet reader thread terminated due to error: {:?}", e);
                 }
@@ -807,11 +833,11 @@ fn read_files(
     batch_size: usize,
     response_tx: Sender<ArrowResult<RecordBatch>>,
     limit: Option<usize>,
+    metadata_cache: Arc<dyn ParquetMetadataCache>,
 ) -> Result<()> {
     let mut total_rows = 0;
     'outer: for filename in filenames {
-        let file = File::open(&filename)?;
-        let mut file_reader = SerializedFileReader::new(file)?;
+        let mut file_reader = metadata_cache.file_reader(filename)?;
         if let Some(predicate_builder) = predicate_builder {
             let row_group_predicate = build_row_group_predicate(
                 predicate_builder,
@@ -947,7 +973,6 @@ mod tests {
             1024,
             4,
             None,
-            NoopParquetMetadataCache::new(),
         )?;
         assert_eq!(parquet_exec.output_partitioning().partition_count(), 1);
 

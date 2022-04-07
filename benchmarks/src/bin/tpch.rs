@@ -43,7 +43,6 @@ use datafusion::physical_plan::display::DisplayableExecutionPlan;
 use datafusion::physical_plan::{collect, displayable};
 use datafusion::prelude::*;
 
-use datafusion::physical_plan::parquet::NoopParquetMetadataCache;
 use structopt::StructOpt;
 
 #[cfg(feature = "snmalloc")]
@@ -486,7 +485,6 @@ fn get_table(
             Ok(Arc::new(ParquetTable::try_new(
                 &path,
                 max_concurrency,
-                NoopParquetMetadataCache::new(),
             )?))
         }
         other => {
