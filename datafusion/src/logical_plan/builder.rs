@@ -144,12 +144,7 @@ impl LogicalPlanBuilder {
         max_concurrency: usize,
     ) -> Result<Self> {
         let path = path.into();
-        Self::scan_parquet_with_name(
-            path.clone(),
-            projection,
-            max_concurrency,
-            path,
-        )
+        Self::scan_parquet_with_name(path.clone(), projection, max_concurrency, path)
     }
 
     /// Scan a Parquet data source and register it with a given table name
@@ -159,10 +154,7 @@ impl LogicalPlanBuilder {
         max_concurrency: usize,
         table_name: impl Into<String>,
     ) -> Result<Self> {
-        let provider = Arc::new(ParquetTable::try_new(
-            path,
-            max_concurrency,
-        )?);
+        let provider = Arc::new(ParquetTable::try_new(path, max_concurrency)?);
         Self::scan(table_name, provider, projection)
     }
 

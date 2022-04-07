@@ -27,7 +27,9 @@ use crate::datasource::datasource::Statistics;
 use crate::datasource::TableProvider;
 use crate::error::Result;
 use crate::logical_plan::{combine_filters, Expr};
-use crate::physical_plan::parquet::{NoopParquetMetadataCache, ParquetExec, ParquetMetadataCache};
+use crate::physical_plan::parquet::{
+    NoopParquetMetadataCache, ParquetExec, ParquetMetadataCache,
+};
 use crate::physical_plan::ExecutionPlan;
 
 use super::datasource::TableProviderFilterPushDown;
@@ -44,11 +46,12 @@ pub struct ParquetTable {
 
 impl ParquetTable {
     /// Attempt to initialize a new `ParquetTable` from a file path.
-    pub fn try_new(
-        path: impl Into<String>,
-        max_concurrency: usize,
-    ) -> Result<Self> {
-        ParquetTable::try_new_with_cache(path, max_concurrency, NoopParquetMetadataCache::new())
+    pub fn try_new(path: impl Into<String>, max_concurrency: usize) -> Result<Self> {
+        ParquetTable::try_new_with_cache(
+            path,
+            max_concurrency,
+            NoopParquetMetadataCache::new(),
+        )
     }
 
     /// Same as {try_new}, but with a ParquetMetadataCache

@@ -261,7 +261,15 @@ impl ParquetExec {
         max_concurrency: usize,
         limit: Option<usize>,
     ) -> Result<Self> {
-         ParquetExec::try_from_path_with_cache(path, projection, predicate, batch_size, max_concurrency, limit, NoopParquetMetadataCache::new())
+        ParquetExec::try_from_path_with_cache(
+            path,
+            projection,
+            predicate,
+            batch_size,
+            max_concurrency,
+            limit,
+            NoopParquetMetadataCache::new(),
+        )
     }
 
     /// Same as {try_from_path}, but with a ParquetMetadataCache
@@ -309,7 +317,15 @@ impl ParquetExec {
         max_concurrency: usize,
         limit: Option<usize>,
     ) -> Result<Self> {
-        ParquetExec::try_from_files_with_cache(filenames, projection, predicate, batch_size, max_concurrency, limit, NoopParquetMetadataCache::new())
+        ParquetExec::try_from_files_with_cache(
+            filenames,
+            projection,
+            predicate,
+            batch_size,
+            max_concurrency,
+            limit,
+            NoopParquetMetadataCache::new(),
+        )
     }
 
     /// Same as {try_from_files}, but with a ParquetMetadataCache
