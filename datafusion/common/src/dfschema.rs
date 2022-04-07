@@ -180,7 +180,7 @@ impl DFSchema {
                 // current field is qualified and not shared between relations, compare both
                 // qualifier and name.
                 (Some(q), Some(field_q)) => {
-                    q == field_q
+                    q.to_ascii_lowercase() == field_q.to_ascii_lowercase()
                         && field.name().to_ascii_lowercase() == name.to_ascii_lowercase()
                 }
                 // field to lookup is qualified but current field is unqualified.

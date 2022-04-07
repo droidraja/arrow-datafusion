@@ -1238,7 +1238,8 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
             SelectItem::UnnamedExpr(expr) => self.sql_to_rex(expr, schema),
             SelectItem::ExprWithAlias { expr, alias } => Ok(Alias(
                 Box::new(self.sql_to_rex(expr, schema)?),
-                normalize_ident(alias),
+                // Hacky solution for compatibility with MySQL
+                alias.value,
             )),
             SelectItem::Wildcard => Ok(Expr::Wildcard),
             SelectItem::QualifiedWildcard(ref object_name) => {
@@ -1506,7 +1507,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                     // identifier. (e.g. it is "foo.bar" not foo.bar)
                     Ok(Expr::Column(Column {
                         relation: None,
-                        name: normalize_ident(id),
+                        name: id.value,
                     }))
                 }
             }
@@ -1757,9 +1758,9 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                 let name = if function.name.0.len() > 1 {
                     // DF doesn't handle compound identifiers
                     // (e.g. "foo.bar") for function names yet
-                    function.name.to_string()
+                    function.name.to_string().to_ascii_lowercase()
                 } else {
-                    normalize_ident(function.name.0[0].clone())
+                    function.name.0[0].clone().value.to_ascii_lowercase()
                 };
 
                 // first, scalar built-in
