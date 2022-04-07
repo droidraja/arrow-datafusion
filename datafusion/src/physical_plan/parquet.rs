@@ -437,7 +437,7 @@ impl ParquetExec {
             }
         });
 
-        Ok(Self::new(
+        Ok(Self::new_with_cache(
             partitions,
             schema,
             projection,
@@ -451,6 +451,28 @@ impl ParquetExec {
 
     /// Create a new Parquet reader execution plan with provided partitions and schema
     pub fn new(
+        partitions: Vec<ParquetPartition>,
+        schema: SchemaRef,
+        projection: Option<Vec<usize>>,
+        metrics: ParquetExecMetrics,
+        predicate_builder: Option<PruningPredicate>,
+        batch_size: usize,
+        limit: Option<usize>,
+    ) -> Self {
+        ParquetExec::new_with_cache(
+            partitions,
+            schema,
+            projection,
+            metrics,
+            predicate_builder,
+            batch_size,
+            limit,
+            NoopParquetMetadataCache::new(),
+        )
+    }
+
+    /// Same as {new}, but with a ParquetMetadataCache
+    pub fn new_with_cache(
         partitions: Vec<ParquetPartition>,
         schema: SchemaRef,
         projection: Option<Vec<usize>>,
