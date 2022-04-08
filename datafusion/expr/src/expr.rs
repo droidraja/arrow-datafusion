@@ -25,6 +25,7 @@ use crate::window_function;
 use crate::AggregateUDF;
 use crate::Operator;
 use crate::ScalarUDF;
+use crate::TableUDF;
 use arrow::datatypes::DataType;
 use datafusion_common::Column;
 use datafusion_common::{DFSchema, Result};
@@ -185,6 +186,13 @@ pub enum Expr {
     ScalarUDF {
         /// The function
         fun: Arc<ScalarUDF>,
+        /// List of expressions to feed to the functions as arguments
+        args: Vec<Expr>,
+    },
+    /// Represents the call of a user-defined table function with arguments.
+    TableUDF {
+        /// The function
+        fun: Arc<TableUDF>,
         /// List of expressions to feed to the functions as arguments
         args: Vec<Expr>,
     },
@@ -456,6 +464,9 @@ impl fmt::Debug for Expr {
             Expr::ScalarUDF { fun, ref args, .. } => {
                 fmt_function(f, &fun.name, false, args, false)
             }
+            Expr::TableUDF { fun, ref args, .. } => {
+                fmt_function(f, &fun.name, false, args, false)
+            }
             Expr::WindowFunction {
                 fun,
                 args,
@@ -626,6 +637,9 @@ fn create_name(e: &Expr, input_schema: &DFSchema) -> Result<String> {
             create_function_name(&fun.to_string(), false, args, input_schema)
         }
         Expr::ScalarUDF { fun, args, .. } => {
+            create_function_name(&fun.name, false, args, input_schema)
+        }
+        Expr::TableUDF { fun, args, .. } => {
             create_function_name(&fun.name, false, args, input_schema)
         }
         Expr::WindowFunction {

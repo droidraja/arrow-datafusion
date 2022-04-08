@@ -182,6 +182,10 @@ impl ExprRewritable for Expr {
                 args: rewrite_vec(args, rewriter)?,
                 fun,
             },
+            Expr::TableUDF { args, fun } => Expr::TableUDF {
+                args: rewrite_vec(args, rewriter)?,
+                fun,
+            },
             Expr::WindowFunction {
                 args,
                 fun,

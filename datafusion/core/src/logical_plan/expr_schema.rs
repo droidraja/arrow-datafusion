@@ -71,6 +71,13 @@ impl ExprSchemable for Expr {
                     .collect::<Result<Vec<_>>>()?;
                 Ok((fun.return_type)(&data_types)?.as_ref().clone())
             }
+            Expr::TableUDF { fun, args } => {
+                let data_types = args
+                    .iter()
+                    .map(|e| e.get_type(schema))
+                    .collect::<Result<Vec<_>>>()?;
+                Ok((fun.return_type)(&data_types)?.as_ref().clone())
+            }
             Expr::ScalarFunction { fun, args } => {
                 let data_types = args
                     .iter()
@@ -170,6 +177,7 @@ impl ExprSchemable for Expr {
             | Expr::TryCast { .. }
             | Expr::ScalarFunction { .. }
             | Expr::ScalarUDF { .. }
+            | Expr::TableUDF { .. }
             | Expr::WindowFunction { .. }
             | Expr::AggregateFunction { .. }
             | Expr::AggregateUDF { .. } => Ok(true),
