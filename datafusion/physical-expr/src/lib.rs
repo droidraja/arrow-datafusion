@@ -38,5 +38,6 @@ pub mod window;
 
 pub use aggregate_expr::AggregateExpr;
 pub use functions::ScalarFunctionExpr;
+pub use functions::TableFunctionExpr;
 pub use physical_expr::PhysicalExpr;
 pub use sort_expr::PhysicalSortExpr;

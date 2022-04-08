@@ -44,6 +44,7 @@ use crate::{
 };
 use crate::{
     physical_plan::udf::ScalarUDF,
+    physical_plan::udtf::TableUDF,
     physical_plan::{aggregates, functions, window_functions},
     sql::parser::{CreateExternalTable, FileType, Statement as DFStatement},
 };
@@ -79,6 +80,8 @@ pub trait ContextProvider {
     fn get_table_provider(&self, name: TableReference) -> Option<Arc<dyn TableProvider>>;
     /// Getter for a UDF description
     fn get_function_meta(&self, name: &str) -> Option<Arc<ScalarUDF>>;
+    /// Getter for a UDTF description
+    fn get_table_function_meta(&self, name: &str) -> Option<Arc<TableUDF>>;
     /// Getter for a UDAF description
     fn get_aggregate_meta(&self, name: &str) -> Option<Arc<AggregateUDF>>;
     /// Getter for system/user-defined variable type
@@ -1979,10 +1982,16 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                             let args = self.function_args_to_expr(function.args, schema)?;
                             Ok(Expr::AggregateUDF { fun: fm, args })
                         }
-                        _ => Err(DataFusionError::Plan(format!(
-                            "Invalid function '{}'",
-                            name
-                        ))),
+                        None => match self.schema_provider.get_table_function_meta(&name) {
+                            Some(fm) => {
+                                let args = self.function_args_to_expr(function.args, schema)?;
+                                Ok(Expr::TableUDF { fun: fm, args })
+                            }
+                            _ => Err(DataFusionError::Plan(format!(
+                                "Invalid function '{}'",
+                                name
+                            ))),
+                        },
                     },
                 }
             }
@@ -4281,6 +4290,10 @@ mod tests {
                 ))),
                 _ => None,
             }
+        }
+
+        fn get_table_function_meta(&self, _name: &str) -> Option<Arc<TableUDF>> {
+            unimplemented!()
         }
 
         fn get_aggregate_meta(&self, _name: &str) -> Option<Arc<AggregateUDF>> {

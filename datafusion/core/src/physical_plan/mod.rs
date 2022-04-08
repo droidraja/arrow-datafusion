@@ -544,6 +544,7 @@ pub mod subquery;
 pub mod type_coercion;
 pub mod udaf;
 pub mod udf;
+pub mod udtf;
 pub mod union;
 pub mod values;
 pub mod window_functions;
