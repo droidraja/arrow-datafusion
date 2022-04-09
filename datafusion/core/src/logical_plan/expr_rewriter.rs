@@ -18,15 +18,15 @@
 //! Expression rewriter
 
 use super::Expr;
-use crate::logical_plan::plan::Aggregate;
+use crate::logical_plan::plan::{Aggregate, Projection};
 use crate::logical_plan::DFSchema;
-use crate::logical_plan::ExprSchemable;
 use crate::logical_plan::LogicalPlan;
 use datafusion_common::Column;
 use datafusion_common::Result;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
+use crate::sql::utils::rebase_expr;
 
 /// Controls how the [ExprRewriter] recursion should proceed.
 pub enum RewriteRecursion {
@@ -285,7 +285,7 @@ pub fn rewrite_sort_cols_by_aggs(
                     nulls_first,
                 } => {
                     let sort = Expr::Sort {
-                        expr: Box::new(rewrite_sort_col_by_aggs(*expr, plan)?),
+                        expr: Box::new(rewrite_sort_col_by_aggs(normalize_col(*expr, &plan)?, plan)?),
                         asc,
                         nulls_first,
                     };
@@ -300,44 +300,17 @@ pub fn rewrite_sort_cols_by_aggs(
 fn rewrite_sort_col_by_aggs(expr: Expr, plan: &LogicalPlan) -> Result<Expr> {
     match plan {
         LogicalPlan::Aggregate(Aggregate {
-            input, aggr_expr, ..
+            input, aggr_expr, group_expr, ..
         }) => {
-            struct Rewriter<'a> {
-                plan: &'a LogicalPlan,
-                input: &'a LogicalPlan,
-                aggr_expr: &'a Vec<Expr>,
-            }
-
-            impl<'a> ExprRewriter for Rewriter<'a> {
-                fn mutate(&mut self, expr: Expr) -> Result<Expr> {
-                    let normalized_expr = normalize_col(expr.clone(), self.plan);
-                    if normalized_expr.is_err() {
-                        // The expr is not based on Aggregate plan output. Skip it.
-                        return Ok(expr);
-                    }
-                    let normalized_expr = normalized_expr.unwrap();
-                    if let Some(found_agg) =
-                        self.aggr_expr.iter().find(|a| (**a) == normalized_expr)
-                    {
-                        let agg = normalize_col(found_agg.clone(), self.plan)?;
-                        let col = Expr::Column(
-                            agg.to_field(self.input.schema())
-                                .map(|f| f.qualified_column())?,
-                        );
-                        Ok(col)
-                    } else {
-                        Ok(expr)
-                    }
-                }
-            }
-
-            expr.rewrite(&mut Rewriter {
-                plan,
-                input,
-                aggr_expr,
-            })
+            let res = rebase_expr(&expr, aggr_expr.as_slice(), &input)?;
+            let res = rebase_expr(&res, group_expr.as_slice(), &input)?;
+            Ok(res)
         }
-        LogicalPlan::Projection(_) => rewrite_sort_col_by_aggs(expr, plan.inputs()[0]),
+        LogicalPlan::Projection(Projection { input, expr: projection_expr, .. }) => {
+            let res = rebase_expr(&expr, projection_expr.as_slice(), &input)?;
+            let res = rewrite_sort_col_by_aggs(res, input)?;
+            Ok(res)
+        },
         _ => Ok(expr),
     }
 }
