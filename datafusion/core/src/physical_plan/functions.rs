@@ -486,6 +486,20 @@ fn signature(fun: &BuiltinScalarFunction) -> Signature {
             ],
             fun.volatility(),
         ),
+        BuiltinScalarFunction::ToDayInterval => Signature::exact(
+            vec![
+                DataType::Int64,
+                DataType::Utf8,
+            ],
+            fun.volatility(),
+        ),
+        BuiltinScalarFunction::ToMonthInterval => Signature::exact(
+            vec![
+                DataType::Int64,
+                DataType::Utf8,
+            ],
+            fun.volatility(),
+        ),
         BuiltinScalarFunction::Digest => {
             Signature::exact(vec![DataType::Utf8, DataType::Utf8], fun.volatility())
         }
