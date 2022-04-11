@@ -1295,11 +1295,15 @@ impl ContextProvider for SessionState {
     }
 
     fn get_function_meta(&self, name: &str) -> Option<Arc<ScalarUDF>> {
-        self.scalar_functions.get(&name.to_ascii_lowercase()).cloned()
+        self.scalar_functions
+            .get(&name.to_ascii_lowercase())
+            .cloned()
     }
 
     fn get_aggregate_meta(&self, name: &str) -> Option<Arc<AggregateUDF>> {
-        self.aggregate_functions.get(&name.to_ascii_lowercase()).cloned()
+        self.aggregate_functions
+            .get(&name.to_ascii_lowercase())
+            .cloned()
     }
 
     fn get_variable_type(&self, variable_names: &[String]) -> Option<DataType> {
@@ -1521,16 +1525,13 @@ mod tests {
     use crate::execution::context::QueryPlanner;
     use crate::from_slice::FromSlice;
     use crate::logical_plan::{binary_expr, lit, Operator};
-    use crate::physical_plan::functions::{make_scalar_function, Volatility};
+
+    use crate::datasource::MemTable;
     use crate::test;
     use crate::variable::VarType;
     use crate::{
         assert_batches_eq, assert_batches_sorted_eq,
-        logical_plan::{col, create_udf, sum, Expr},
-    };
-    use crate::{
-        datasource::MemTable, logical_plan::create_udaf,
-        physical_plan::expressions::AvgAccumulator,
+        logical_plan::{col, sum, Expr},
     };
     use arrow::array::{
         Array, ArrayRef, DictionaryArray, Float32Array, Float64Array, Int16Array,

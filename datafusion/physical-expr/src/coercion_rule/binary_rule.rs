@@ -49,12 +49,12 @@ pub(crate) fn coerce_types(
         Operator::Like | Operator::NotLike => like_coercion(lhs_type, rhs_type),
         // for math expressions, the final value of the coercion is also the return type
         // because coercion favours higher information types
-        Operator::Plus
-        | Operator::Minus => numerical_coercion(lhs_type, rhs_type).or_else(|| interval_coercion(lhs_type, rhs_type)),
+        Operator::Plus | Operator::Minus => numerical_coercion(lhs_type, rhs_type)
+            .or_else(|| interval_coercion(lhs_type, rhs_type)),
         // Same as Plus & Minus
-        | Operator::Modulo
-        | Operator::Divide
-        | Operator::Multiply => mathematics_numerical_coercion(op, lhs_type, rhs_type),
+        Operator::Modulo | Operator::Divide | Operator::Multiply => {
+            mathematics_numerical_coercion(op, lhs_type, rhs_type)
+        }
         Operator::RegexMatch
         | Operator::RegexIMatch
         | Operator::RegexNotMatch
@@ -492,7 +492,6 @@ fn eq_coercion(lhs_type: &DataType, rhs_type: &DataType) -> Option<DataType> {
         .or_else(|| temporal_coercion(lhs_type, rhs_type))
 }
 
-
 /// Coercion rule for interval
 pub fn interval_coercion(lhs_type: &DataType, rhs_type: &DataType) -> Option<DataType> {
     use arrow::datatypes::DataType::*;
@@ -500,8 +499,12 @@ pub fn interval_coercion(lhs_type: &DataType, rhs_type: &DataType) -> Option<Dat
     // these are ordered from most informative to least informative so
     // that the coercion removes the least amount of information
     match (lhs_type, rhs_type) {
-        (Timestamp(unit, zone), Interval(_)) => Some(Timestamp(unit.clone(), zone.clone())),
-        (Interval(_), Timestamp(unit, zone)) => Some(Timestamp(unit.clone(), zone.clone())),
+        (Timestamp(unit, zone), Interval(_)) => {
+            Some(Timestamp(unit.clone(), zone.clone()))
+        }
+        (Interval(_), Timestamp(unit, zone)) => {
+            Some(Timestamp(unit.clone(), zone.clone()))
+        }
         _ => None,
     }
 }

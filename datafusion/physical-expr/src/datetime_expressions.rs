@@ -17,6 +17,7 @@
 
 //! DateTime expressions
 
+use arrow::array::{Int64Array, IntervalDayTimeArray, IntervalYearMonthArray};
 use arrow::{
     array::{Array, ArrayRef, GenericStringArray, PrimitiveArray, StringOffsetSizeTrait},
     compute::kernels::cast_utils::string_to_timestamp_nanos,
@@ -41,7 +42,6 @@ use datafusion_common::{ScalarType, ScalarValue};
 use datafusion_expr::ColumnarValue;
 use std::borrow::Borrow;
 use std::sync::Arc;
-use arrow::array::{Int64Array, IntervalDayTimeArray, IntervalYearMonthArray};
 
 /// given a function `op` that maps a `&str` to a Result of an arrow native type,
 /// returns a `PrimitiveArray` after the application
@@ -170,23 +170,28 @@ pub fn to_timestamp_seconds(args: &[ColumnarValue]) -> Result<ColumnarValue> {
 /// to_day_interval SQL function
 pub fn to_day_interval(args: &[ColumnarValue]) -> Result<ColumnarValue> {
     let unit = match &args[1] {
-        ColumnarValue::Scalar(value) => {
-            match value {
-                ScalarValue::Utf8(value) => {
-                    value.clone().ok_or(DataFusionError::Execution("Unit can't be null".to_string()))?
-                }
-                x => return Err(DataFusionError::Execution(format!("Unit is expected to be a string but {:?} found", x)))
+        ColumnarValue::Scalar(value) => match value {
+            ScalarValue::Utf8(value) => value
+                .clone()
+                .ok_or(DataFusionError::Execution("Unit can't be null".to_string()))?,
+            x => {
+                return Err(DataFusionError::Execution(format!(
+                    "Unit is expected to be a string but {:?} found",
+                    x
+                )))
             }
         },
-        ColumnarValue::Array(_) => return Err(DataFusionError::Execution("Unit is expected to be a scalar".to_string()))
+        ColumnarValue::Array(_) => {
+            return Err(DataFusionError::Execution(
+                "Unit is expected to be a scalar".to_string(),
+            ))
+        }
     };
 
     Ok(match &args[0] {
         ColumnarValue::Array(period_array) => {
-            let period_array = period_array
-                .as_any()
-                .downcast_ref::<Int64Array>()
-                .unwrap();
+            let period_array =
+                period_array.as_any().downcast_ref::<Int64Array>().unwrap();
             ColumnarValue::Array(Arc::new(period_array
                 .iter()
                 .map(|period| {
@@ -201,44 +206,52 @@ pub fn to_day_interval(args: &[ColumnarValue]) -> Result<ColumnarValue> {
                 })
                 .collect::<Result<IntervalDayTimeArray>>()?))
         }
-        ColumnarValue::Scalar(value) => {
-            match value {
-                ScalarValue::Int64(value) => {
-                    if let Some(period) = value {
-                        ColumnarValue::Scalar(match to_interval_single(*period, unit.as_str())? {
+        ColumnarValue::Scalar(value) => match value {
+            ScalarValue::Int64(value) => {
+                if let Some(period) = value {
+                    ColumnarValue::Scalar(match to_interval_single(*period, unit.as_str())? {
                             ScalarValue::IntervalDayTime(value) => Ok(ScalarValue::IntervalDayTime(value)),
                             x => Err(DataFusionError::Execution(format!("Resulting interval expected to be IntervalDayTime but {:?} found", x))),
                         }?)
-                    } else {
-                        ColumnarValue::Scalar(ScalarValue::IntervalDayTime(None))
-                    }
+                } else {
+                    ColumnarValue::Scalar(ScalarValue::IntervalDayTime(None))
                 }
-                x => return Err(DataFusionError::Execution(format!("Period expected to be Int64 but {:?} found", x))),
             }
-        }
+            x => {
+                return Err(DataFusionError::Execution(format!(
+                    "Period expected to be Int64 but {:?} found",
+                    x
+                )))
+            }
+        },
     })
 }
 
 /// to_month_interval SQL function
 pub fn to_month_interval(args: &[ColumnarValue]) -> Result<ColumnarValue> {
     let unit = match &args[1] {
-        ColumnarValue::Scalar(value) => {
-            match value {
-                ScalarValue::Utf8(value) => {
-                    value.clone().ok_or(DataFusionError::Execution("Unit can't be null".to_string()))?
-                }
-                x => return Err(DataFusionError::Execution(format!("Unit is expected to be a string but {:?} found", x)))
+        ColumnarValue::Scalar(value) => match value {
+            ScalarValue::Utf8(value) => value
+                .clone()
+                .ok_or(DataFusionError::Execution("Unit can't be null".to_string()))?,
+            x => {
+                return Err(DataFusionError::Execution(format!(
+                    "Unit is expected to be a string but {:?} found",
+                    x
+                )))
             }
         },
-        ColumnarValue::Array(_) => return Err(DataFusionError::Execution("Unit is expected to be a scalar".to_string()))
+        ColumnarValue::Array(_) => {
+            return Err(DataFusionError::Execution(
+                "Unit is expected to be a scalar".to_string(),
+            ))
+        }
     };
 
     Ok(match &args[0] {
         ColumnarValue::Array(period_array) => {
-            let period_array = period_array
-                .as_any()
-                .downcast_ref::<Int64Array>()
-                .unwrap();
+            let period_array =
+                period_array.as_any().downcast_ref::<Int64Array>().unwrap();
             ColumnarValue::Array(Arc::new(period_array
                 .iter()
                 .map(|period| {
@@ -253,21 +266,24 @@ pub fn to_month_interval(args: &[ColumnarValue]) -> Result<ColumnarValue> {
                 })
                 .collect::<Result<IntervalYearMonthArray>>()?))
         }
-        ColumnarValue::Scalar(value) => {
-            match value {
-                ScalarValue::Int64(value) => {
-                    if let Some(period) = value {
-                        ColumnarValue::Scalar(match to_interval_single(*period, unit.as_str())? {
+        ColumnarValue::Scalar(value) => match value {
+            ScalarValue::Int64(value) => {
+                if let Some(period) = value {
+                    ColumnarValue::Scalar(match to_interval_single(*period, unit.as_str())? {
                             ScalarValue::IntervalYearMonth(value) => Ok(ScalarValue::IntervalYearMonth(value)),
                             x => Err(DataFusionError::Execution(format!("Resulting interval expected to be IntervalYearMonth but {:?} found", x))),
                         }?)
-                    } else {
-                        ColumnarValue::Scalar(ScalarValue::IntervalYearMonth(None))
-                    }
+                } else {
+                    ColumnarValue::Scalar(ScalarValue::IntervalYearMonth(None))
                 }
-                x => return Err(DataFusionError::Execution(format!("Period expected to be Int64 but {:?} found", x))),
             }
-        }
+            x => {
+                return Err(DataFusionError::Execution(format!(
+                    "Period expected to be Int64 but {:?} found",
+                    x
+                )))
+            }
+        },
     })
 }
 
@@ -282,44 +298,39 @@ fn to_interval_single(interval_period: i64, interval_unit: &str) -> Result<Scala
     const SECONDS_PER_HOUR: i64 = 3_600_i64;
     const MILLIS_PER_SECOND: i64 = 1_000_i64;
 
-    let align_interval_parts = |month_part: i64,
-                                mut day_part: i64,
-                                mut millis_part: i64|
-                                -> (i32, i64, i64) {
-        // Convert fractional month to days, It's not supported by Arrow types, but anyway
-        day_part += (month_part - (month_part as i32) as i64) * 30;
+    let align_interval_parts =
+        |month_part: i64, mut day_part: i64, mut millis_part: i64| -> (i32, i64, i64) {
+            // Convert fractional month to days, It's not supported by Arrow types, but anyway
+            day_part += (month_part - (month_part as i32) as i64) * 30;
 
-        // Convert fractional days to hours
-        millis_part += (day_part - ((day_part as i32) as i64))
-            * 24
-            * SECONDS_PER_HOUR
-            * MILLIS_PER_SECOND;
+            // Convert fractional days to hours
+            millis_part += (day_part - ((day_part as i32) as i64))
+                * 24
+                * SECONDS_PER_HOUR
+                * MILLIS_PER_SECOND;
 
-        (month_part as i32, day_part as i64, millis_part)
-    };
+            (month_part as i32, day_part as i64, millis_part)
+        };
 
-    let (result_month, result_days, result_millis) = match interval_unit.to_lowercase().as_str() {
-        "year" => Ok(align_interval_parts(interval_period * 12, 0, 0)),
-        "month" => Ok(align_interval_parts(interval_period, 0, 0)),
-        "day" | "days" => Ok(align_interval_parts(0, interval_period, 0)),
-        "hour" | "hours" => {
-            Ok((0, 0, interval_period * SECONDS_PER_HOUR * MILLIS_PER_SECOND))
-        }
-        "minutes" | "minute" => {
-            Ok((0, 0, interval_period * 60 * MILLIS_PER_SECOND))
-        }
-        "seconds" | "second" => Ok((0, 0, interval_period * MILLIS_PER_SECOND)),
-        "milliseconds" | "millisecond" => Ok((0, 0, interval_period)),
-        _ => Err(DataFusionError::NotImplemented(format!(
-            "Invalid input syntax for type interval: {:?}",
-            interval_unit
-        ))),
-    }?;
+    let (result_month, result_days, result_millis) =
+        match interval_unit.to_lowercase().as_str() {
+            "year" => Ok(align_interval_parts(interval_period * 12, 0, 0)),
+            "month" => Ok(align_interval_parts(interval_period, 0, 0)),
+            "day" | "days" => Ok(align_interval_parts(0, interval_period, 0)),
+            "hour" | "hours" => {
+                Ok((0, 0, interval_period * SECONDS_PER_HOUR * MILLIS_PER_SECOND))
+            }
+            "minutes" | "minute" => Ok((0, 0, interval_period * 60 * MILLIS_PER_SECOND)),
+            "seconds" | "second" => Ok((0, 0, interval_period * MILLIS_PER_SECOND)),
+            "milliseconds" | "millisecond" => Ok((0, 0, interval_period)),
+            _ => Err(DataFusionError::NotImplemented(format!(
+                "Invalid input syntax for type interval: {:?}",
+                interval_unit
+            ))),
+        }?;
 
     if result_month != 0 {
-        return Ok(ScalarValue::IntervalYearMonth(Some(
-            result_month as i32,
-        )));
+        return Ok(ScalarValue::IntervalYearMonth(Some(result_month as i32)));
     }
 
     let result: i64 = (result_days << 32) | result_millis;
@@ -358,8 +369,7 @@ pub fn make_utc_timestamp(
     let now_ts = Some(now_ts.timestamp_nanos());
     move |_arg| {
         Ok(ColumnarValue::Scalar(ScalarValue::TimestampNanosecond(
-            now_ts,
-            None
+            now_ts, None,
         )))
     }
 }

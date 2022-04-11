@@ -41,6 +41,7 @@ use crate::{
     error::{DataFusionError, Result},
     scalar::ScalarValue,
 };
+use arrow::datatypes::IntervalUnit;
 use arrow::{
     array::ArrayRef,
     compute::kernels::length::{bit_length, length},
@@ -54,7 +55,6 @@ pub use datafusion_physical_expr::datetime_expressions;
 pub use datafusion_physical_expr::math_expressions;
 pub use datafusion_physical_expr::string_expressions;
 use std::sync::Arc;
-use arrow::datatypes::IntervalUnit;
 
 macro_rules! make_utf8_to_return_type {
     ($FUNC:ident, $largeUtf8Type:expr, $utf8Type:expr) => {
@@ -486,20 +486,12 @@ fn signature(fun: &BuiltinScalarFunction) -> Signature {
             ],
             fun.volatility(),
         ),
-        BuiltinScalarFunction::ToDayInterval => Signature::exact(
-            vec![
-                DataType::Int64,
-                DataType::Utf8,
-            ],
-            fun.volatility(),
-        ),
-        BuiltinScalarFunction::ToMonthInterval => Signature::exact(
-            vec![
-                DataType::Int64,
-                DataType::Utf8,
-            ],
-            fun.volatility(),
-        ),
+        BuiltinScalarFunction::ToDayInterval => {
+            Signature::exact(vec![DataType::Int64, DataType::Utf8], fun.volatility())
+        }
+        BuiltinScalarFunction::ToMonthInterval => {
+            Signature::exact(vec![DataType::Int64, DataType::Utf8], fun.volatility())
+        }
         BuiltinScalarFunction::Digest => {
             Signature::exact(vec![DataType::Utf8, DataType::Utf8], fun.volatility())
         }
@@ -847,8 +839,12 @@ pub fn create_physical_fun(
         }
         BuiltinScalarFunction::DatePart => Arc::new(datetime_expressions::date_part),
         BuiltinScalarFunction::DateTrunc => Arc::new(datetime_expressions::date_trunc),
-        BuiltinScalarFunction::ToDayInterval => Arc::new(datetime_expressions::to_day_interval),
-        BuiltinScalarFunction::ToMonthInterval => Arc::new(datetime_expressions::to_month_interval),
+        BuiltinScalarFunction::ToDayInterval => {
+            Arc::new(datetime_expressions::to_day_interval)
+        }
+        BuiltinScalarFunction::ToMonthInterval => {
+            Arc::new(datetime_expressions::to_month_interval)
+        }
         BuiltinScalarFunction::Now => {
             // bind value for now at plan time
             Arc::new(datetime_expressions::make_now(

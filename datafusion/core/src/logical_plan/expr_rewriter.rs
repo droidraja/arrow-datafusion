@@ -21,12 +21,12 @@ use super::Expr;
 use crate::logical_plan::plan::{Aggregate, Projection};
 use crate::logical_plan::DFSchema;
 use crate::logical_plan::LogicalPlan;
+use crate::sql::utils::rebase_expr;
 use datafusion_common::Column;
 use datafusion_common::Result;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
-use crate::sql::utils::rebase_expr;
 
 /// Controls how the [ExprRewriter] recursion should proceed.
 pub enum RewriteRecursion {
@@ -285,7 +285,10 @@ pub fn rewrite_sort_cols_by_aggs(
                     nulls_first,
                 } => {
                     let sort = Expr::Sort {
-                        expr: Box::new(rewrite_sort_col_by_aggs(normalize_col(*expr, &plan)?, plan)?),
+                        expr: Box::new(rewrite_sort_col_by_aggs(
+                            normalize_col(*expr, &plan)?,
+                            plan,
+                        )?),
                         asc,
                         nulls_first,
                     };
@@ -300,17 +303,24 @@ pub fn rewrite_sort_cols_by_aggs(
 fn rewrite_sort_col_by_aggs(expr: Expr, plan: &LogicalPlan) -> Result<Expr> {
     match plan {
         LogicalPlan::Aggregate(Aggregate {
-            input, aggr_expr, group_expr, ..
+            input,
+            aggr_expr,
+            group_expr,
+            ..
         }) => {
             let res = rebase_expr(&expr, aggr_expr.as_slice(), &input)?;
             let res = rebase_expr(&res, group_expr.as_slice(), &input)?;
             Ok(res)
         }
-        LogicalPlan::Projection(Projection { input, expr: projection_expr, .. }) => {
+        LogicalPlan::Projection(Projection {
+            input,
+            expr: projection_expr,
+            ..
+        }) => {
             let res = rebase_expr(&expr, projection_expr.as_slice(), &input)?;
             let res = rewrite_sort_col_by_aggs(res, input)?;
             Ok(res)
-        },
+        }
         _ => Ok(expr),
     }
 }

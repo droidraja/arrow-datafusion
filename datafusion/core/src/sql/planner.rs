@@ -69,8 +69,8 @@ use super::{
     },
 };
 use crate::logical_plan::builder::project_with_alias;
-use crate::physical_plan::functions::BuiltinScalarFunction;
 use crate::logical_plan::plan::{Analyze, Explain};
+use crate::physical_plan::functions::BuiltinScalarFunction;
 
 /// The ContextProvider trait allows the query planner to obtain meta-data about tables and
 /// functions referenced in SQL statements
@@ -134,8 +134,14 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
     }
 
     /// Create a new query planner
-    pub fn new_with_options(schema_provider: &'a S, table_columns_precedence_over_projection: bool) -> Self {
-        SqlToRel { schema_provider, table_columns_precedence_over_projection }
+    pub fn new_with_options(
+        schema_provider: &'a S,
+        table_columns_precedence_over_projection: bool,
+    ) -> Self {
+        SqlToRel {
+            schema_provider,
+            table_columns_precedence_over_projection,
+        }
     }
 
     /// Generate a logical plan from an DataFusion SQL statement
@@ -883,7 +889,12 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
         // this alias map is resolved and looked up in both having exprs and group by exprs
         let mut alias_map = extract_aliases(&select_exprs);
         if self.table_columns_precedence_over_projection {
-            alias_map = alias_map.into_iter().filter(|(alias, _)| plan.schema().field_with_unqualified_name(alias).is_err()).collect();
+            alias_map = alias_map
+                .into_iter()
+                .filter(|(alias, _)| {
+                    plan.schema().field_with_unqualified_name(alias).is_err()
+                })
+                .collect();
         }
 
         // Optionally the HAVING expression.

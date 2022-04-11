@@ -165,7 +165,9 @@ impl BuiltinScalarFunction {
     pub fn supports_zero_argument(&self) -> bool {
         matches!(
             self,
-            BuiltinScalarFunction::Random | BuiltinScalarFunction::Now | BuiltinScalarFunction::UtcTimestamp
+            BuiltinScalarFunction::Random
+                | BuiltinScalarFunction::Now
+                | BuiltinScalarFunction::UtcTimestamp
         )
     }
     /// Returns the [Volatility] of the builtin function.
