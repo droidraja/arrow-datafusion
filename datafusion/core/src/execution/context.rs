@@ -1546,6 +1546,7 @@ impl FunctionRegistry for TaskContext {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::datasource::MemTable;
     use crate::execution::context::QueryPlanner;
     use crate::from_slice::FromSlice;
     use crate::logical_plan::{binary_expr, lit, Operator};
@@ -1557,10 +1558,6 @@ mod tests {
     use crate::{
         assert_batches_eq, assert_batches_sorted_eq,
         logical_plan::{col, create_udf, create_udtf, sum, Expr},
-    };
-    use crate::{
-        datasource::MemTable, logical_plan::create_udaf,
-        physical_plan::expressions::AvgAccumulator,
     };
     use arrow::array::{
         Array, ArrayRef, DictionaryArray, Float32Array, Float64Array, Int16Array,
