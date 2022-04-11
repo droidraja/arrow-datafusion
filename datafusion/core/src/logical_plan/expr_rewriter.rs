@@ -286,7 +286,7 @@ pub fn rewrite_sort_cols_by_aggs(
                 } => {
                     let sort = Expr::Sort {
                         expr: Box::new(rewrite_sort_col_by_aggs(
-                            normalize_col(*expr, &plan)?,
+                            normalize_col(*expr, plan)?,
                             plan,
                         )?),
                         asc,
@@ -308,8 +308,8 @@ fn rewrite_sort_col_by_aggs(expr: Expr, plan: &LogicalPlan) -> Result<Expr> {
             group_expr,
             ..
         }) => {
-            let res = rebase_expr(&expr, aggr_expr.as_slice(), &input)?;
-            let res = rebase_expr(&res, group_expr.as_slice(), &input)?;
+            let res = rebase_expr(&expr, aggr_expr.as_slice(), input)?;
+            let res = rebase_expr(&res, group_expr.as_slice(), input)?;
             Ok(res)
         }
         LogicalPlan::Projection(Projection {
@@ -317,7 +317,7 @@ fn rewrite_sort_col_by_aggs(expr: Expr, plan: &LogicalPlan) -> Result<Expr> {
             expr: projection_expr,
             ..
         }) => {
-            let res = rebase_expr(&expr, projection_expr.as_slice(), &input)?;
+            let res = rebase_expr(&expr, projection_expr.as_slice(), input)?;
             let res = rewrite_sort_col_by_aggs(res, input)?;
             Ok(res)
         }
