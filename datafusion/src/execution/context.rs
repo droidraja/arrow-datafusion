@@ -67,7 +67,6 @@ use crate::physical_optimizer::repartition::Repartition;
 
 use crate::cube_ext::joinagg::FoldCrossJoinAggregate;
 use crate::physical_plan::csv::CsvReadOptions;
-use crate::physical_plan::parquet::{NoopParquetMetadataCache, ParquetMetadataCache};
 use crate::physical_plan::planner::DefaultPhysicalPlanner;
 use crate::physical_plan::udf::ScalarUDF;
 use crate::physical_plan::ExecutionPlan;
@@ -157,9 +156,6 @@ impl ExecutionContext {
                 .register_catalog(config.default_catalog.clone(), default_catalog);
         }
 
-        let parquet_metadata_cache: Arc<dyn ParquetMetadataCache> =
-            config.parquet_metadata_cache.clone();
-
         Self {
             state: Arc::new(Mutex::new(ExecutionContextState {
                 catalog_list,
@@ -168,7 +164,6 @@ impl ExecutionContext {
                 aggregate_functions: HashMap::new(),
                 config,
                 execution_props: ExecutionProps::new(),
-                parquet_metadata_cache,
             })),
         }
     }
@@ -330,12 +325,8 @@ impl ExecutionContext {
     pub fn register_parquet(&mut self, name: &str, filename: &str) -> Result<()> {
         let table = {
             let m = self.state.lock().unwrap();
-            ParquetTable::try_new_with_cache(
-                filename,
-                m.config.concurrency,
-                m.parquet_metadata_cache.clone(),
-            )?
-            .with_enable_pruning(m.config.parquet_pruning)
+            ParquetTable::try_new(filename, m.config.concurrency)?
+                .with_enable_pruning(m.config.parquet_pruning)
         };
         self.register_table(name, Arc::new(table))?;
         Ok(())
@@ -684,8 +675,6 @@ pub struct ExecutionConfig {
     pub repartition_windows: bool,
     /// Should Datafusion parquet reader using the predicate to prune data
     parquet_pruning: bool,
-    /// Parquet MetadataCache
-    parquet_metadata_cache: Arc<dyn ParquetMetadataCache>,
 }
 
 impl Default for ExecutionConfig {
@@ -719,7 +708,6 @@ impl Default for ExecutionConfig {
             repartition_aggregations: true,
             repartition_windows: true,
             parquet_pruning: true,
-            parquet_metadata_cache: NoopParquetMetadataCache::new(),
         }
     }
 }
@@ -828,15 +816,6 @@ impl ExecutionConfig {
         self.parquet_pruning = enabled;
         self
     }
-
-    /// Configures Parquet metadata caching.
-    pub fn with_parquet_metadata_cache(
-        mut self,
-        parquet_metadata_cache: Arc<dyn ParquetMetadataCache>,
-    ) -> Self {
-        self.parquet_metadata_cache = parquet_metadata_cache;
-        self
-    }
 }
 
 /// Holds per-execution properties and data (such as starting timestamps, etc).
@@ -863,8 +842,6 @@ pub struct ExecutionContextState {
     pub config: ExecutionConfig,
     /// Execution properties
     pub execution_props: ExecutionProps,
-    /// Cache for parquet metadata
-    pub parquet_metadata_cache: Arc<dyn ParquetMetadataCache>,
 }
 
 impl ExecutionProps {
@@ -892,7 +869,6 @@ impl ExecutionContextState {
             aggregate_functions: HashMap::new(),
             config: ExecutionConfig::new(),
             execution_props: ExecutionProps::new(),
-            parquet_metadata_cache: NoopParquetMetadataCache::new(),
         }
     }
 

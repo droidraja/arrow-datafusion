@@ -27,9 +27,7 @@ use crate::datasource::datasource::Statistics;
 use crate::datasource::TableProvider;
 use crate::error::Result;
 use crate::logical_plan::{combine_filters, Expr};
-use crate::physical_plan::parquet::{
-    NoopParquetMetadataCache, ParquetExec, ParquetMetadataCache,
-};
+use crate::physical_plan::parquet::ParquetExec;
 use crate::physical_plan::ExecutionPlan;
 
 use super::datasource::TableProviderFilterPushDown;
@@ -41,35 +39,13 @@ pub struct ParquetTable {
     statistics: Statistics,
     max_concurrency: usize,
     enable_pruning: bool,
-    parquet_metadata_cache: Arc<dyn ParquetMetadataCache>,
 }
 
 impl ParquetTable {
     /// Attempt to initialize a new `ParquetTable` from a file path.
     pub fn try_new(path: impl Into<String>, max_concurrency: usize) -> Result<Self> {
-        ParquetTable::try_new_with_cache(
-            path,
-            max_concurrency,
-            NoopParquetMetadataCache::new(),
-        )
-    }
-
-    /// Same as {try_new}, but with a ParquetMetadataCache
-    pub fn try_new_with_cache(
-        path: impl Into<String>,
-        max_concurrency: usize,
-        parquet_metadata_cache: Arc<dyn ParquetMetadataCache>,
-    ) -> Result<Self> {
         let path = path.into();
-        let parquet_exec = ParquetExec::try_from_path_with_cache(
-            &path,
-            None,
-            None,
-            0,
-            1,
-            None,
-            parquet_metadata_cache.clone(),
-        )?;
+        let parquet_exec = ParquetExec::try_from_path(&path, None, None, 0, 1, None)?;
         let schema = parquet_exec.schema();
         Ok(Self {
             path,
@@ -77,7 +53,6 @@ impl ParquetTable {
             statistics: parquet_exec.statistics().to_owned(),
             max_concurrency,
             enable_pruning: true,
-            parquet_metadata_cache: parquet_metadata_cache,
         })
     }
 
@@ -132,7 +107,7 @@ impl TableProvider for ParquetTable {
         } else {
             None
         };
-        Ok(Arc::new(ParquetExec::try_from_path_with_cache(
+        Ok(Arc::new(ParquetExec::try_from_path(
             &self.path,
             projection.clone(),
             predicate,
@@ -141,7 +116,6 @@ impl TableProvider for ParquetTable {
                 .unwrap_or(batch_size),
             self.max_concurrency,
             limit,
-            self.parquet_metadata_cache.clone(),
         )?))
     }
 
