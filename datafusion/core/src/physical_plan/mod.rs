@@ -541,6 +541,7 @@ pub mod repartition;
 pub mod sorts;
 pub mod stream;
 pub mod subquery;
+pub mod table_fun;
 pub mod type_coercion;
 pub mod udaf;
 pub mod udf;
