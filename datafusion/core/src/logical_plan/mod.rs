@@ -54,8 +54,9 @@ pub use expr::{
     trunc, unalias, upper, when, Column, Expr, ExprSchema, Literal,
 };
 pub use expr_rewriter::{
-    normalize_col, normalize_cols, replace_col, rewrite_sort_cols_by_aggs,
-    unnormalize_col, unnormalize_cols, ExprRewritable, ExprRewriter, RewriteRecursion,
+    flat_exprs, normalize_col, normalize_cols, replace_col, rewrite_sort_cols_by_aggs,
+    rewrite_udtfs_to_columns, unnormalize_col, unnormalize_cols, ExprRewritable,
+    ExprRewriter, RewriteRecursion,
 };
 pub use expr_schema::ExprSchemable;
 pub use expr_simplier::{ExprSimplifiable, SimplifyInfo};

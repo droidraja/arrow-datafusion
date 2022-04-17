@@ -26,7 +26,6 @@ use crate::error::DataFusionError;
 use crate::logical_plan::dfschema::DFSchemaRef;
 use crate::sql::parser::FileType;
 use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
-use datafusion_expr::TableUDF;
 use std::fmt::Formatter;
 use std::{
     collections::HashSet,
@@ -425,7 +424,7 @@ impl LogicalPlan {
                 schema
             }
             LogicalPlan::DropTable(DropTable { schema, .. }) => schema,
-            LogicalPlan::TableUDFs(TableUDFs { schema , .. }) => schema,
+            LogicalPlan::TableUDFs(TableUDFs { schema, .. }) => schema,
         }
     }
 
@@ -439,7 +438,7 @@ impl LogicalPlan {
             LogicalPlan::Window(Window { input, schema, .. })
             | LogicalPlan::Projection(Projection { input, schema, .. })
             | LogicalPlan::Aggregate(Aggregate { input, schema, .. })
-            | LogicalPlan::TableUDFs(TableUDFs { input, schema , .. }) => {
+            | LogicalPlan::TableUDFs(TableUDFs { input, schema, .. }) => {
                 let mut schemas = input.all_schemas();
                 schemas.insert(0, schema);
                 schemas
@@ -993,9 +992,7 @@ impl LogicalPlan {
                         }
                         Ok(())
                     }
-                    LogicalPlan::TableUDFs(TableUDFs {
-                        ref expr, ..
-                    }) => {
+                    LogicalPlan::TableUDFs(TableUDFs { ref expr, .. }) => {
                         write!(f, "TableUDFs: ")?;
                         for (i, expr_item) in expr.iter().enumerate() {
                             if i > 0 {

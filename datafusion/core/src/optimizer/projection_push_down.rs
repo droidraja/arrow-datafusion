@@ -21,7 +21,7 @@
 use crate::error::{DataFusionError, Result};
 use crate::execution::context::ExecutionProps;
 use crate::logical_plan::plan::{
-    Aggregate, Analyze, Join, Projection, TableScan, Window, TableUDFs,
+    Aggregate, Analyze, Join, Projection, TableScan, TableUDFs, Window,
 };
 use crate::logical_plan::{
     build_join_schema, Column, DFField, DFSchema, DFSchemaRef, LogicalPlan,
@@ -196,13 +196,11 @@ fn optimize_plan(
                 }))
             }
         }
-        // TODO: !!!!!!!!!!!!!!
         LogicalPlan::TableUDFs(TableUDFs {
             input,
             expr,
             schema,
         }) => {
-            // projection:
             // * remove any expression that is not required
             // * construct the new set of required columns
 

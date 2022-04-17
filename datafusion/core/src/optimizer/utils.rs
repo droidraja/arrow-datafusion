@@ -20,7 +20,7 @@
 use super::optimizer::OptimizerRule;
 use crate::execution::context::ExecutionProps;
 use crate::logical_plan::plan::{
-    Aggregate, Analyze, Extension, Filter, Join, Projection, Sort, Window, TableUDFs,
+    Aggregate, Analyze, Extension, Filter, Join, Projection, Sort, TableUDFs, Window,
 };
 
 use crate::logical_plan::{
@@ -152,7 +152,6 @@ pub fn from_plan(
                 alias: alias.clone(),
             }))
         }
-        // TODO: !!!!!!!!!!!!!
         LogicalPlan::TableUDFs(TableUDFs { schema, .. }) => {
             Ok(LogicalPlan::TableUDFs(TableUDFs {
                 expr: expr.to_vec(),
