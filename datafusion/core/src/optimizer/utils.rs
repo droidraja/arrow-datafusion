@@ -20,7 +20,8 @@
 use super::optimizer::OptimizerRule;
 use crate::execution::context::ExecutionProps;
 use crate::logical_plan::plan::{
-    Aggregate, Analyze, Extension, Filter, Join, Projection, Sort, Subquery, Window,
+    Aggregate, Analyze, Extension, Filter, Join, Projection, Sort, Subquery, TableUDFs,
+    Window,
 };
 
 use crate::logical_plan::{
@@ -158,6 +159,14 @@ pub fn from_plan(
         LogicalPlan::Subquery(Subquery { schema, .. }) => {
             Ok(LogicalPlan::Subquery(Subquery {
                 subqueries: inputs[1..inputs.len()].to_vec(),
+                input: Arc::new(inputs[0].clone()),
+                schema: schema.clone(),
+            }))
+        }
+        // TODO: !!!!!!!!!!!!!
+        LogicalPlan::TableUDFs(TableUDFs { schema, .. }) => {
+            Ok(LogicalPlan::TableUDFs(TableUDFs {
+                expr: expr.to_vec(),
                 input: Arc::new(inputs[0].clone()),
                 schema: schema.clone(),
             }))
