@@ -26,6 +26,7 @@ use crate::error::DataFusionError;
 use crate::logical_plan::dfschema::DFSchemaRef;
 use crate::sql::parser::FileType;
 use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
+use datafusion_expr::TableUDF;
 use std::fmt::Formatter;
 use std::{
     collections::HashSet,
@@ -314,6 +315,17 @@ pub struct Join {
     pub null_equals_null: bool,
 }
 
+/// Handle UDTFs
+#[derive(Clone)]
+pub struct TableUDFs {
+    /// The list of expressions
+    pub expr: Vec<Expr>,
+    /// The incoming logical plan
+    pub input: Arc<LogicalPlan>,
+    /// The schema description of the output
+    pub schema: DFSchemaRef,
+}
+
 /// A LogicalPlan represents the different types of relational
 /// operators (such as Projection, Filter, etc) and can be created by
 /// the SQL query planner and the DataFrame API.
@@ -375,6 +387,8 @@ pub enum LogicalPlan {
     /// Runs the actual plan, and then prints the physical plan with
     /// with execution metrics.
     Analyze(Analyze),
+    /// UDTF Node
+    TableUDFs(TableUDFs),
     /// Extension operator defined outside of DataFusion
     Extension(Extension),
 }
@@ -411,6 +425,7 @@ impl LogicalPlan {
                 schema
             }
             LogicalPlan::DropTable(DropTable { schema, .. }) => schema,
+            LogicalPlan::TableUDFs(TableUDFs { schema , .. }) => schema,
         }
     }
 
@@ -423,7 +438,8 @@ impl LogicalPlan {
             LogicalPlan::Values(Values { schema, .. }) => vec![schema],
             LogicalPlan::Window(Window { input, schema, .. })
             | LogicalPlan::Projection(Projection { input, schema, .. })
-            | LogicalPlan::Aggregate(Aggregate { input, schema, .. }) => {
+            | LogicalPlan::Aggregate(Aggregate { input, schema, .. })
+            | LogicalPlan::TableUDFs(TableUDFs { input, schema , .. }) => {
                 let mut schemas = input.all_schemas();
                 schemas.insert(0, schema);
                 schemas
@@ -501,6 +517,7 @@ impl LogicalPlan {
                 .collect(),
             LogicalPlan::Sort(Sort { expr, .. }) => expr.clone(),
             LogicalPlan::Extension(extension) => extension.node.expressions(),
+            LogicalPlan::TableUDFs(TableUDFs { expr, .. }) => expr.clone(),
             // plans without expressions
             LogicalPlan::TableScan { .. }
             | LogicalPlan::EmptyRelation(_)
@@ -538,6 +555,7 @@ impl LogicalPlan {
             LogicalPlan::CreateMemoryTable(CreateMemoryTable { input, .. }) => {
                 vec![input]
             }
+            LogicalPlan::TableUDFs(TableUDFs { input, .. }) => vec![input],
             // plans without inputs
             LogicalPlan::TableScan { .. }
             | LogicalPlan::EmptyRelation { .. }
@@ -691,6 +709,7 @@ impl LogicalPlan {
             }
             LogicalPlan::Explain(explain) => explain.plan.accept(visitor)?,
             LogicalPlan::Analyze(analyze) => analyze.input.accept(visitor)?,
+            LogicalPlan::TableUDFs(TableUDFs { input, .. }) => input.accept(visitor)?,
             // plans without inputs
             LogicalPlan::TableScan { .. }
             | LogicalPlan::EmptyRelation(_)
@@ -971,6 +990,18 @@ impl LogicalPlan {
                         }
                         if let Some(a) = alias {
                             write!(f, ", alias={}", a)?;
+                        }
+                        Ok(())
+                    }
+                    LogicalPlan::TableUDFs(TableUDFs {
+                        ref expr, ..
+                    }) => {
+                        write!(f, "TableUDFs: ")?;
+                        for (i, expr_item) in expr.iter().enumerate() {
+                            if i > 0 {
+                                write!(f, ", ")?;
+                            }
+                            write!(f, "{:?}", expr_item)?;
                         }
                         Ok(())
                     }
