@@ -82,10 +82,6 @@ impl ProjectionExec {
             input_schema.metadata().clone(),
         ));
 
-        for f in schema.fields().iter() {
-            println!("{}", f.name());
-        }
-
         Ok(Self {
             expr,
             schema,

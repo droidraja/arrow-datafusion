@@ -196,13 +196,11 @@ fn optimize_plan(
                 }))
             }
         }
-        // TODO: !!!!!!!!!!!!!!
         LogicalPlan::TableUDFs(TableUDFs {
             input,
             expr,
             schema,
         }) => {
-            // projection:
             // * remove any expression that is not required
             // * construct the new set of required columns
 

@@ -2050,6 +2050,13 @@ mod tests {
     #[tokio::test]
     async fn aggregate_avg() -> Result<()> {
         let results = execute("SELECT AVG(c1), AVG(c2) FROM test", 4).await?;
+
+        let formatted = arrow::util::pretty::pretty_format_batches(&results)
+            .unwrap()
+            .to_string();
+
+        println!("{}", formatted);
+
         assert_eq!(results.len(), 1);
 
         let expected = vec![
@@ -3317,7 +3324,6 @@ mod tests {
             Field::new("qwe", DataType::Utf8, false),
         ]));
 
-
         let mut kek1: Vec<i64> = vec![];
         let mut kek2: Vec<String> = vec![];
         for i in 1..=1000 {
@@ -3340,10 +3346,9 @@ mod tests {
 
         let result = plan_and_collect(
             &ctx,
-            "SELECT asd, 1 + my_func(1, asd) + 5 + 1 kek FROM (select 1 asd, 3 qwe UNION ALL select 2 asd, 4 qwe) x",
-            // "SELECT my_func(1, asd) x FROM (select 1 asd, 3 qwe UNION ALL select 2 asd, 4 qwe) x",
-
-
+            // "SELECT asd, 1 + my_func(1, asd) + 5 + 1 kek, my_func(1, 2) FROM (select 1 asd, 3 qwe UNION ALL select 2 asd, 4 qwe) x",
+            // "select my_func(1, 5) pos(n)",
+            "SELECT asd, my_func(1, asd) x FROM (select 1 asd, 3 qwe) x",
             // "SELECT my_func(asd, 1000000) FROM my_table",
             // "SELECT asd, qwe, my_func(1, asd), my_func(1, 5) FROM (select 1 asd, 3 qwe UNION ALL select 2 asd, 4 qwe) x",
             // "SELECT asd, my_func(asd, 1000000) + 5 FROM (select 1 asd, 3 qwe UNION ALL select 2 asd, 4 qwe) x",
