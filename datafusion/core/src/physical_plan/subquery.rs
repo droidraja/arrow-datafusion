@@ -42,9 +42,9 @@ use futures::stream::StreamExt;
 
 /// Execution plan for a sub query
 #[derive(Debug)]
-pub struct SubQueryExec {
+pub struct SubqueryExec {
     /// Sub queries
-    sub_queries: Vec<Arc<dyn ExecutionPlan>>,
+    subqueries: Vec<Arc<dyn ExecutionPlan>>,
     /// Merged schema
     schema: SchemaRef,
     /// The input plan
@@ -53,10 +53,10 @@ pub struct SubQueryExec {
     cursor: Arc<OuterQueryCursor>,
 }
 
-impl SubQueryExec {
+impl SubqueryExec {
     /// Create a projection on an input
     pub fn try_new(
-        sub_queries: Vec<Arc<dyn ExecutionPlan>>,
+        subqueries: Vec<Arc<dyn ExecutionPlan>>,
         input: Arc<dyn ExecutionPlan>,
         cursor: Arc<OuterQueryCursor>,
     ) -> Result<Self> {
@@ -64,7 +64,7 @@ impl SubQueryExec {
 
         let merged_schema = Schema::try_merge(
             vec![input_schema].into_iter().chain(
-                sub_queries
+                subqueries
                     .iter()
                     .map(|s| (*s.schema()).clone())
                     .collect::<Vec<_>>(),
@@ -72,13 +72,13 @@ impl SubQueryExec {
         )?;
 
         if merged_schema.fields().len()
-            != input.schema().fields().len() + sub_queries.len()
+            != input.schema().fields().len() + subqueries.len()
         {
             return Err(DataFusionError::Plan("One or more correlated sub queries use same column names which is not supported".to_string()));
         }
 
         Ok(Self {
-            sub_queries,
+            subqueries: subqueries,
             schema: Arc::new(merged_schema),
             input,
             cursor,
@@ -87,7 +87,7 @@ impl SubQueryExec {
 }
 
 #[async_trait]
-impl ExecutionPlan for SubQueryExec {
+impl ExecutionPlan for SubqueryExec {
     /// Return a reference to Any that can be used for downcasting
     fn as_any(&self) -> &dyn Any {
         self
@@ -100,7 +100,7 @@ impl ExecutionPlan for SubQueryExec {
 
     fn children(&self) -> Vec<Arc<dyn ExecutionPlan>> {
         let mut res = vec![self.input.clone()];
-        res.extend(self.sub_queries.iter().cloned());
+        res.extend(self.subqueries.iter().cloned());
         res
     }
 
@@ -133,7 +133,7 @@ impl ExecutionPlan for SubQueryExec {
             )));
         }
 
-        Ok(Arc::new(SubQueryExec::try_new(
+        Ok(Arc::new(SubqueryExec::try_new(
             children.iter().skip(1).cloned().collect(),
             children[0].clone(),
             self.cursor.clone(),
@@ -147,34 +147,34 @@ impl ExecutionPlan for SubQueryExec {
     ) -> Result<SendableRecordBatchStream> {
         let stream = self.input.execute(partition, context.clone()).await?;
         let cursor = self.cursor.clone();
-        let sub_queries = self.sub_queries.clone();
+        let subqueries = self.subqueries.clone();
         let context = context.clone();
         let size_hint = stream.size_hint();
         let schema = self.schema.clone();
         let res_stream = stream.then(move |batch| {
             let cursor = cursor.clone();
             let context = context.clone();
-            let sub_queries = sub_queries.clone();
+            let subqueries = subqueries.clone();
             let schema = schema.clone();
             async move {
                 let batch = batch?;
                 let b = Arc::new(batch.clone());
                 cursor.set_batch(b)?;
-                let mut sub_query_arrays = vec![Vec::new(); sub_queries.len()];
+                let mut subquery_arrays = vec![Vec::new(); subqueries.len()];
                 for i in 0..batch.num_rows() {
                     cursor.set_position(i)?;
-                    for (sub_query_i, sub_query) in sub_queries.iter().enumerate() {
-                        if sub_query.output_partitioning().partition_count() != 1 {
-                            return Err(ArrowError::ComputeError(format!("Sub query should have only one partition but got {}", sub_query.output_partitioning().partition_count())))
+                    for (subquery_i, subquery) in subqueries.iter().enumerate() {
+                        if subquery.output_partitioning().partition_count() != 1 {
+                            return Err(ArrowError::ComputeError(format!("Sub query should have only one partition but got {}", subquery.output_partitioning().partition_count())))
                         }
-                        let mut stream = sub_query.execute(0, context.clone()).await?;
+                        let mut stream = subquery.execute(0, context.clone()).await?;
                         let res = stream.next().await;
-                        if let Some(sub_query_batch) = res {
-                            let sub_query_batch = sub_query_batch?;
-                            if sub_query_batch.column(0).len() != 1 {
+                        if let Some(subquery_batch) = res {
+                            let subquery_batch = subquery_batch?;
+                            if subquery_batch.column(0).len() != 1 {
                                 return Err(ArrowError::ComputeError("Sub query should return exactly one row".to_string()))
                             } else {
-                                sub_query_arrays[sub_query_i].push(sub_query_batch.column(0).clone());
+                                subquery_arrays[subquery_i].push(subquery_batch.column(0).clone());
                             }
                         } else {
                             return Err(ArrowError::ComputeError("Sub query returned empty result set but exactly one row is expected".to_string()))
@@ -182,8 +182,8 @@ impl ExecutionPlan for SubQueryExec {
                     }
                 }
                 let mut new_columns = batch.columns().to_vec();
-                for sub_query_array in sub_query_arrays {
-                    new_columns.push(concat(sub_query_array.iter().map(|a| a.as_ref()).collect::<Vec<_>>().as_slice())?);
+                for subquery_array in subquery_arrays {
+                    new_columns.push(concat(subquery_array.iter().map(|a| a.as_ref()).collect::<Vec<_>>().as_slice())?);
                 }
                 Ok(RecordBatch::try_new(schema.clone(), new_columns)?)
             }

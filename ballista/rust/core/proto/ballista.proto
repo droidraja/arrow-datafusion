@@ -116,7 +116,7 @@ message ProjectionNode {
 
 message SubqueryNode {
   LogicalPlanNode input = 1;
-  repeated LogicalPlanNode sub_queries = 2;
+  repeated LogicalPlanNode subqueries = 2;
 }
 
 message SelectionNode {

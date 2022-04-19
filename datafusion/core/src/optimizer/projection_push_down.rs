@@ -433,18 +433,18 @@ fn optimize_plan(
             }))
         }
         LogicalPlan::Subquery(Subquery {
-            input, sub_queries, ..
+            input, subqueries, ..
         }) => {
-            let mut sub_query_required_columns = HashSet::new();
-            for sub_query in sub_queries.iter() {
-                let mut inputs = vec![sub_query];
+            let mut subquery_required_columns = HashSet::new();
+            for subquery in subqueries.iter() {
+                let mut inputs = vec![subquery];
                 while !inputs.is_empty() {
                     let mut next_inputs = Vec::new();
                     for input in inputs.iter() {
                         let expr = input.expressions();
                         utils::exprlist_to_columns(
                             &expr,
-                            &mut sub_query_required_columns,
+                            &mut subquery_required_columns,
                         )?;
                         next_inputs.extend(input.inputs());
                     }
@@ -453,7 +453,7 @@ fn optimize_plan(
             }
             let schema = input.schema();
             new_required_columns.extend(
-                sub_query_required_columns
+                subquery_required_columns
                     .into_iter()
                     .filter(|c| schema.index_of_column(c).is_ok()),
             );
@@ -464,12 +464,12 @@ fn optimize_plan(
                 has_projection,
                 execution_props,
             )?;
-            let new_schema = Subquery::merged_schema(&input, &sub_queries);
+            let new_schema = Subquery::merged_schema(&input, &subqueries);
             println!("Subquery::merged_schema: {:?}", new_schema);
             Ok(LogicalPlan::Subquery(Subquery {
                 input: Arc::new(input),
                 schema: Arc::new(new_schema),
-                sub_queries: sub_queries.clone(),
+                subqueries: subqueries.clone(),
             }))
         }
         // all other nodes: Add any additional columns used by

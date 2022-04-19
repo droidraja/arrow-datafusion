@@ -132,13 +132,13 @@ impl AsLogicalPlan for LogicalPlanNode {
             LogicalPlanType::Subquery(subquery) => {
                 let input: LogicalPlan =
                     into_logical_plan!(subquery.input, ctx, extension_codec)?;
-                let sub_queries: Vec<LogicalPlan> = subquery
-                    .sub_queries
+                let subqueries: Vec<LogicalPlan> = subquery
+                    .subqueries
                     .iter()
                     .map(|i| i.try_into_logical_plan(ctx, extension_codec))
                     .collect::<Result<_, BallistaError>>()?;
                 LogicalPlanBuilder::from(input)
-                    .sub_query(sub_queries)?
+                    .subquery(subqueries)?
                     .build()
                     .map_err(|e| e.into())
             }
@@ -596,7 +596,7 @@ impl AsLogicalPlan for LogicalPlanNode {
                 ))),
             }),
             LogicalPlan::Subquery(Subquery {
-                sub_queries, input, ..
+                subqueries, input, ..
             }) => Ok(protobuf::LogicalPlanNode {
                 logical_plan_type: Some(LogicalPlanType::Subquery(Box::new(
                     protobuf::SubqueryNode {
@@ -606,7 +606,7 @@ impl AsLogicalPlan for LogicalPlanNode {
                                 extension_codec,
                             )?,
                         )),
-                        sub_queries: sub_queries
+                        subqueries: subqueries
                             .iter()
                             .map(|p| {
                                 protobuf::LogicalPlanNode::try_from_logical_plan(

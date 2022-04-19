@@ -519,16 +519,16 @@ impl LogicalPlanBuilder {
     }
 
     /// Apply correlated sub query
-    pub fn sub_query(
+    pub fn subquery(
         &self,
-        sub_queries: impl IntoIterator<Item = impl Into<LogicalPlan>>,
+        subqueries: impl IntoIterator<Item = impl Into<LogicalPlan>>,
     ) -> Result<Self> {
-        let sub_queries = sub_queries.into_iter().map(|l| l.into()).collect();
-        let schema = Arc::new(Subquery::merged_schema(&self.plan, &sub_queries));
+        let subqueries = subqueries.into_iter().map(|l| l.into()).collect();
+        let schema = Arc::new(Subquery::merged_schema(&self.plan, &subqueries));
         Ok(Self::from(LogicalPlan::Subquery(Subquery {
             input: Arc::new(self.plan.clone()),
-            sub_queries,
-            schema: schema,
+            subqueries,
+            schema,
         })))
     }
 

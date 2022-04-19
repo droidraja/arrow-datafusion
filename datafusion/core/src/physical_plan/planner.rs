@@ -47,7 +47,7 @@ use crate::physical_plan::limit::{GlobalLimitExec, LocalLimitExec};
 use crate::physical_plan::projection::ProjectionExec;
 use crate::physical_plan::repartition::RepartitionExec;
 use crate::physical_plan::sorts::sort::SortExec;
-use crate::physical_plan::subquery::SubQueryExec;
+use crate::physical_plan::subquery::SubqueryExec;
 use crate::physical_plan::udf;
 use crate::physical_plan::windows::WindowAggExec;
 use crate::physical_plan::{join_utils, Partitioning};
@@ -812,12 +812,12 @@ impl DefaultPhysicalPlanner {
 
                     Ok(Arc::new(GlobalLimitExec::new(input, limit)))
                 }
-                LogicalPlan::Subquery(Subquery { sub_queries, input, schema }) => {
+                LogicalPlan::Subquery(Subquery { subqueries, input, schema }) => {
                     let cursor = Arc::new(OuterQueryCursor::new(schema.as_ref().to_owned().into()));
                     let mut new_session_state = session_state.clone();
                     new_session_state.execution_props = new_session_state.execution_props.with_outer_query_cursor(cursor.clone());
                     new_session_state.config.target_partitions = 1;
-                    let sub_queries = futures::stream::iter(sub_queries)
+                    let subqueries = futures::stream::iter(subqueries)
                         .then(|lp| self.create_initial_plan(lp, &new_session_state))
                         .try_collect::<Vec<_>>()
                         .await?.into_iter()
@@ -826,8 +826,8 @@ impl DefaultPhysicalPlanner {
                         })
                         .collect::<Vec<_>>();
                     let input = self.create_initial_plan(input, &new_session_state).await?;
-                    println!("Sub query input: {:?}", sub_queries);
-                    Ok(Arc::new(SubQueryExec::try_new(sub_queries, input, cursor)?))
+                    println!("Sub query input: {:?}", subqueries);
+                    Ok(Arc::new(SubqueryExec::try_new(subqueries, input, cursor)?))
                 }
                 LogicalPlan::CreateExternalTable(_) => {
                     // There is no default plan for "CREATE EXTERNAL

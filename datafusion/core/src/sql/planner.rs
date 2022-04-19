@@ -95,7 +95,7 @@ pub struct SqlToRel<'a, S: ContextProvider> {
 /// Planning context
 pub struct SqlToRelContext {
     outer_query_context_schema: Vec<DFSchemaRef>,
-    sub_queries_plans: Option<RwLock<Vec<LogicalPlan>>>,
+    subqueries_plans: Option<RwLock<Vec<LogicalPlan>>>,
 }
 
 impl SqlToRelContext {
@@ -103,7 +103,7 @@ impl SqlToRelContext {
     pub fn new() -> Self {
         Self {
             outer_query_context_schema: Vec::new(),
-            sub_queries_plans: None,
+            subqueries_plans: None,
         }
     }
 
@@ -111,18 +111,18 @@ impl SqlToRelContext {
     pub fn fork(&self) -> Self {
         Self {
             outer_query_context_schema: self.outer_query_context_schema.clone(),
-            sub_queries_plans: None,
+            subqueries_plans: None,
         }
     }
 
-    fn add_sub_query_plan(&self, plan: LogicalPlan) -> Result<()> {
-        Ok(self.sub_queries_plans.as_ref().ok_or(DataFusionError::Plan(format!("Sub query {:?} planned outside of sub query context. This type of sub query isn't supported", plan)))?.write().unwrap().push(plan))
+    fn add_subquery_plan(&self, plan: LogicalPlan) -> Result<()> {
+        Ok(self.subqueries_plans.as_ref().ok_or(DataFusionError::Plan(format!("Sub query {:?} planned outside of sub query context. This type of sub query isn't supported", plan)))?.write().unwrap().push(plan))
     }
 
-    fn sub_queries_plans(&self) -> Result<Option<Vec<LogicalPlan>>> {
-        Ok(if let Some(sub_queries) = self.sub_queries_plans.as_ref() {
+    fn subqueries_plans(&self) -> Result<Option<Vec<LogicalPlan>>> {
+        Ok(if let Some(subqueries) = self.subqueries_plans.as_ref() {
             Some(
-                sub_queries
+                subqueries
                     .read()
                     .map_err(|e| DataFusionError::Plan(e.to_string()))?
                     .iter()
@@ -929,7 +929,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
 
         // process the SELECT expressions, with wildcards expanded.
         let with_outer_query_context =
-            self.with_context(|c| c.sub_queries_plans = Some(RwLock::new(Vec::new())));
+            self.with_context(|c| c.subqueries_plans = Some(RwLock::new(Vec::new())));
         let select_exprs = with_outer_query_context.prepare_select_exprs(
             &plan,
             select.projection,
@@ -1092,13 +1092,13 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
         &self,
         plan: LogicalPlan,
     ) -> Result<LogicalPlan> {
-        Ok(if let Some(sub_queries) = &self.context.sub_queries_plans {
-            let sub_queries = sub_queries
+        Ok(if let Some(subqueries) = &self.context.subqueries_plans {
+            let subqueries = subqueries
                 .read()
                 .map_err(|e| DataFusionError::Plan(e.to_string()))?;
-            if !sub_queries.is_empty() {
+            if !subqueries.is_empty() {
                 LogicalPlanBuilder::from(plan)
-                    .sub_query(sub_queries.clone())?
+                    .subquery(subqueries.clone())?
                     .build()?
             } else {
                 plan
@@ -1304,7 +1304,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
             .try_for_each(|col| match col {
                 Expr::Column(col) => match &col.relation {
                     Some(r) => {
-                        if let Some(plans) = self.context.sub_queries_plans()? {
+                        if let Some(plans) = self.context.subqueries_plans()? {
                             if plans.into_iter().any(|p| {
                                 p.schema().field_with_qualified_name(r, &col.name).is_ok()
                             }) {
@@ -1315,7 +1315,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                         Ok(())
                     }
                     None => {
-                        if let Some(plans) = self.context.sub_queries_plans()? {
+                        if let Some(plans) = self.context.subqueries_plans()? {
                             if plans.into_iter().any(|p| {
                                 !p.schema()
                                     .fields_with_unqualified_name(&col.name)
@@ -2003,7 +2003,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                     return Err(DataFusionError::Plan(format!("Correlated sub query requires only one column in result set but found: {:?}", fields)));
                 }
                 let column = fields.iter().next().unwrap().qualified_column();
-                self.context.add_sub_query_plan(plan)?;
+                self.context.add_subquery_plan(plan)?;
                 Ok(Expr::Column(column))
             }
 

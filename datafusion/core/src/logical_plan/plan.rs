@@ -266,7 +266,7 @@ pub struct Limit {
 #[derive(Clone)]
 pub struct Subquery {
     /// The list of sub queries
-    pub sub_queries: Vec<LogicalPlan>,
+    pub subqueries: Vec<LogicalPlan>,
     /// The incoming logical plan
     pub input: Arc<LogicalPlan>,
     /// The schema description of the output
@@ -275,11 +275,8 @@ pub struct Subquery {
 
 impl Subquery {
     /// Merge schema of main input and correlated subquery columns
-    pub fn merged_schema(
-        input: &LogicalPlan,
-        sub_queries: &Vec<LogicalPlan>,
-    ) -> DFSchema {
-        sub_queries.iter().fold((**input.schema()).clone(), |a, b| {
+    pub fn merged_schema(input: &LogicalPlan, subqueries: &Vec<LogicalPlan>) -> DFSchema {
+        subqueries.iter().fold((**input.schema()).clone(), |a, b| {
             let mut res = a.clone();
             res.merge(b.schema());
             res
@@ -555,10 +552,10 @@ impl LogicalPlan {
         match self {
             LogicalPlan::Projection(Projection { input, .. }) => vec![input],
             LogicalPlan::Subquery(Subquery {
-                input, sub_queries, ..
+                input, subqueries, ..
             }) => vec![input.as_ref()]
                 .into_iter()
-                .chain(sub_queries.iter())
+                .chain(subqueries.iter())
                 .collect(),
             LogicalPlan::Filter(Filter { input, .. }) => vec![input],
             LogicalPlan::Repartition(Repartition { input, .. }) => vec![input],
@@ -696,10 +693,10 @@ impl LogicalPlan {
         let recurse = match self {
             LogicalPlan::Projection(Projection { input, .. }) => input.accept(visitor)?,
             LogicalPlan::Subquery(Subquery {
-                input, sub_queries, ..
+                input, subqueries, ..
             }) => {
                 input.accept(visitor)?;
-                for input in sub_queries {
+                for input in subqueries {
                     if !input.accept(visitor)? {
                         return Ok(false);
                     }
