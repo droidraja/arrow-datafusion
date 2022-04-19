@@ -100,14 +100,7 @@ fn create_physical_name(e: &Expr, is_first_expr: bool) -> Result<String> {
                 Ok(c.flat_name())
             }
         }
-        Expr::OuterColumn(_, c) => {
-            // TODO
-            if is_first_expr {
-                Ok(c.name.clone())
-            } else {
-                Ok(c.flat_name())
-            }
-        }
+        Expr::OuterColumn(_, c) => Ok(c.flat_name()),
         Expr::Alias(_, name) => Ok(name.clone()),
         Expr::ScalarVariable(_, variable_names) => Ok(variable_names.join(".")),
         Expr::Literal(value) => Ok(format!("{:?}", value)),
@@ -826,7 +819,6 @@ impl DefaultPhysicalPlanner {
                         })
                         .collect::<Vec<_>>();
                     let input = self.create_initial_plan(input, &new_session_state).await?;
-                    println!("Sub query input: {:?}", subqueries);
                     Ok(Arc::new(SubqueryExec::try_new(subqueries, input, cursor)?))
                 }
                 LogicalPlan::CreateExternalTable(_) => {

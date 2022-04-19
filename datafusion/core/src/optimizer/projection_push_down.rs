@@ -465,7 +465,6 @@ fn optimize_plan(
                 execution_props,
             )?;
             let new_schema = Subquery::merged_schema(&input, &subqueries);
-            println!("Subquery::merged_schema: {:?}", new_schema);
             Ok(LogicalPlan::Subquery(Subquery {
                 input: Arc::new(input),
                 schema: Arc::new(new_schema),

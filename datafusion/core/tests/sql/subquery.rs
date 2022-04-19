@@ -64,12 +64,12 @@ async fn subquery_projection_pushdown() -> Result<()> {
     let ctx = SessionContext::new();
     register_aggregate_simple_csv(&ctx).await?;
 
-    let sql = "SELECT c1, (SELECT o.c2 as res FROM aggregate_simple AS i WHERE o.c1 = i.c1 LIMIT 1) FROM aggregate_simple o ORDER BY c1 LIMIT 2";
+    let sql = "SELECT c1, (SELECT o.c2 FROM aggregate_simple AS i WHERE o.c1 = i.c1 LIMIT 1) FROM aggregate_simple o ORDER BY c1 LIMIT 2";
     let actual = execute_to_batches(&ctx, sql).await;
 
     let expected = vec![
         "+---------+----------------+",
-        "| c1      | res            |",
+        "| c1      | o.c2           |",
         "+---------+----------------+",
         "| 0.00001 | 0.000000000001 |",
         "| 0.00002 | 0.000000000002 |",
