@@ -223,6 +223,7 @@ fn optimize(plan: &LogicalPlan, execution_props: &ExecutionProps) -> Result<Logi
         | LogicalPlan::CreateMemoryTable(_)
         | LogicalPlan::CreateCatalogSchema(_)
         | LogicalPlan::DropTable(_)
+        | LogicalPlan::Subquery(_)
         | LogicalPlan::Extension { .. } => {
             // apply the optimization to all inputs of the plan
             let expr = plan.expressions();
@@ -378,6 +379,10 @@ impl ExprIdentifierVisitor<'_> {
         match expr {
             Expr::Column(column) => {
                 desc.push_str("Column-");
+                desc.push_str(&column.flat_name());
+            }
+            Expr::OuterColumn(_, column) => {
+                desc.push_str("OuterColumn-");
                 desc.push_str(&column.flat_name());
             }
             Expr::ScalarVariable(_, var_names) => {

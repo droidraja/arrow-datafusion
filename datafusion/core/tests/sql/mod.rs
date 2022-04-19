@@ -101,6 +101,7 @@ pub mod window;
 mod explain;
 pub mod information_schema;
 mod partitioned_csv;
+pub mod subquery;
 #[cfg(feature = "unicode_expressions")]
 pub mod unicode;
 

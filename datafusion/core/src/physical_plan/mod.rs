@@ -540,6 +540,7 @@ pub mod projection;
 pub mod repartition;
 pub mod sorts;
 pub mod stream;
+pub mod subquery;
 pub mod type_coercion;
 pub mod udaf;
 pub mod udf;
