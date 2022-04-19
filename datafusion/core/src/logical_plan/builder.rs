@@ -25,7 +25,7 @@ use crate::datasource::{
 use crate::error::{DataFusionError, Result};
 use crate::logical_plan::expr_schema::ExprSchemable;
 use crate::logical_plan::plan::{
-    Aggregate, Analyze, EmptyRelation, Explain, Filter, Join, Projection, Sort,
+    Aggregate, Analyze, EmptyRelation, Explain, Filter, Join, Projection, Sort, Subquery,
     TableScan, ToStringifiedPlan, Union, Window,
 };
 use crate::optimizer::utils;
@@ -515,6 +515,20 @@ impl LogicalPlanBuilder {
         Ok(Self::from(LogicalPlan::Limit(Limit {
             n,
             input: Arc::new(self.plan.clone()),
+        })))
+    }
+
+    /// Apply correlated sub query
+    pub fn sub_query(
+        &self,
+        sub_queries: impl IntoIterator<Item = impl Into<LogicalPlan>>,
+    ) -> Result<Self> {
+        let sub_queries = sub_queries.into_iter().map(|l| l.into()).collect();
+        let schema = Arc::new(Subquery::merged_schema(&self.plan, &sub_queries));
+        Ok(Self::from(LogicalPlan::Subquery(Subquery {
+            input: Arc::new(self.plan.clone()),
+            sub_queries,
+            schema: schema,
         })))
     }
 

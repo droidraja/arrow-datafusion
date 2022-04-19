@@ -547,3 +547,4 @@ pub mod union;
 pub mod values;
 pub mod window_functions;
 pub mod windows;
+pub mod subquery;

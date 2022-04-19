@@ -19,9 +19,7 @@
 
 use super::optimizer::OptimizerRule;
 use crate::execution::context::ExecutionProps;
-use crate::logical_plan::plan::{
-    Aggregate, Analyze, Extension, Filter, Join, Projection, Sort, Window,
-};
+use crate::logical_plan::plan::{Aggregate, Analyze, Extension, Filter, Join, Projection, Sort, Subquery, Window};
 
 use crate::logical_plan::{
     build_join_schema, Column, CreateMemoryTable, DFSchemaRef, Expr, ExprVisitable,
@@ -60,6 +58,9 @@ impl ExpressionVisitor for ColumnNameVisitor<'_> {
     fn pre_visit(self, expr: &Expr) -> Result<Recursion<Self>> {
         match expr {
             Expr::Column(qc) => {
+                self.accum.insert(qc.clone());
+            }
+            Expr::OuterColumn(_, qc) => {
                 self.accum.insert(qc.clone());
             }
             Expr::ScalarVariable(_, var_names) => {
@@ -149,6 +150,13 @@ pub fn from_plan(
                 input: Arc::new(inputs[0].clone()),
                 schema: schema.clone(),
                 alias: alias.clone(),
+            }))
+        }
+        LogicalPlan::Subquery(Subquery { schema, .. }) => {
+            Ok(LogicalPlan::Subquery(Subquery {
+                sub_queries: inputs[1..inputs.len()].iter().cloned().collect(),
+                input: Arc::new(inputs[0].clone()),
+                schema: schema.clone(),
             }))
         }
         LogicalPlan::Values(Values { schema, .. }) => Ok(LogicalPlan::Values(Values {
@@ -333,7 +341,7 @@ pub fn expr_sub_expressions(expr: &Expr) -> Result<Vec<Expr>> {
             }
             Ok(expr_list)
         }
-        Expr::Column(_) | Expr::Literal(_) | Expr::ScalarVariable(_, _) => Ok(vec![]),
+        Expr::Column(_) | Expr::OuterColumn(_, _) | Expr::Literal(_) | Expr::ScalarVariable(_, _) => Ok(vec![]),
         Expr::Between {
             expr, low, high, ..
         } => Ok(vec![
@@ -480,6 +488,7 @@ pub fn rewrite_expression(expr: &Expr, expressions: &[Expr]) -> Result<Expr> {
         Expr::Not(_) => Ok(Expr::Not(Box::new(expressions[0].clone()))),
         Expr::Negative(_) => Ok(Expr::Negative(Box::new(expressions[0].clone()))),
         Expr::Column(_)
+        | Expr::OuterColumn(_, _)
         | Expr::Literal(_)
         | Expr::InList { .. }
         | Expr::ScalarVariable(_, _) => Ok(expr.clone()),

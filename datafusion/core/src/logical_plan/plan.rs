@@ -26,6 +26,7 @@ use crate::error::DataFusionError;
 use crate::logical_plan::dfschema::DFSchemaRef;
 use crate::sql::parser::FileType;
 use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
+use datafusion_common::DFSchema;
 use std::fmt::Formatter;
 use std::{
     collections::HashSet,
@@ -261,6 +262,31 @@ pub struct Limit {
     pub input: Arc<LogicalPlan>,
 }
 
+/// Evaluates correlated sub queries
+#[derive(Clone)]
+pub struct Subquery {
+    /// The list of sub queries
+    pub sub_queries: Vec<LogicalPlan>,
+    /// The incoming logical plan
+    pub input: Arc<LogicalPlan>,
+    /// The schema description of the output
+    pub schema: DFSchemaRef,
+}
+
+impl Subquery {
+    /// Merge schema of main input and correlated subquery columns
+    pub fn merged_schema(
+        input: &LogicalPlan,
+        sub_queries: &Vec<LogicalPlan>,
+    ) -> DFSchema {
+        sub_queries.iter().fold((**input.schema()).clone(), |a, b| {
+            let mut res = a.clone();
+            res.merge(b.schema());
+            res
+        })
+    }
+}
+
 /// Values expression. See
 /// [Postgres VALUES](https://www.postgresql.org/docs/current/queries-values.html)
 /// documentation for more details.
@@ -357,6 +383,8 @@ pub enum LogicalPlan {
     EmptyRelation(EmptyRelation),
     /// Produces the first `n` tuples from its input and discards the rest.
     Limit(Limit),
+    /// Evaluates correlated sub queries
+    Subquery(Subquery),
     /// Creates an external table.
     CreateExternalTable(CreateExternalTable),
     /// Creates an in memory table.
@@ -389,6 +417,7 @@ impl LogicalPlan {
                 projected_schema, ..
             }) => projected_schema,
             LogicalPlan::Projection(Projection { schema, .. }) => schema,
+            LogicalPlan::Subquery(Subquery { schema, .. }) => schema,
             LogicalPlan::Filter(Filter { input, .. }) => input.schema(),
             LogicalPlan::Window(Window { schema, .. }) => schema,
             LogicalPlan::Aggregate(Aggregate { schema, .. }) => schema,
@@ -423,6 +452,7 @@ impl LogicalPlan {
             LogicalPlan::Values(Values { schema, .. }) => vec![schema],
             LogicalPlan::Window(Window { input, schema, .. })
             | LogicalPlan::Projection(Projection { input, schema, .. })
+            | LogicalPlan::Subquery(Subquery { input, schema, .. })
             | LogicalPlan::Aggregate(Aggregate { input, schema, .. }) => {
                 let mut schemas = input.all_schemas();
                 schemas.insert(0, schema);
@@ -512,6 +542,7 @@ impl LogicalPlan {
             | LogicalPlan::CrossJoin(_)
             | LogicalPlan::Analyze { .. }
             | LogicalPlan::Explain { .. }
+            | LogicalPlan::Subquery(_)
             | LogicalPlan::Union(_) => {
                 vec![]
             }
@@ -523,6 +554,12 @@ impl LogicalPlan {
     pub fn inputs(self: &LogicalPlan) -> Vec<&LogicalPlan> {
         match self {
             LogicalPlan::Projection(Projection { input, .. }) => vec![input],
+            LogicalPlan::Subquery(Subquery {
+                input, sub_queries, ..
+            }) => vec![input.as_ref()]
+                .into_iter()
+                .chain(sub_queries.iter())
+                .collect(),
             LogicalPlan::Filter(Filter { input, .. }) => vec![input],
             LogicalPlan::Repartition(Repartition { input, .. }) => vec![input],
             LogicalPlan::Window(Window { input, .. }) => vec![input],
@@ -658,6 +695,17 @@ impl LogicalPlan {
 
         let recurse = match self {
             LogicalPlan::Projection(Projection { input, .. }) => input.accept(visitor)?,
+            LogicalPlan::Subquery(Subquery {
+                input, sub_queries, ..
+            }) => {
+                input.accept(visitor)?;
+                for input in sub_queries {
+                    if !input.accept(visitor)? {
+                        return Ok(false);
+                    }
+                }
+                true
+            }
             LogicalPlan::Filter(Filter { input, .. }) => input.accept(visitor)?,
             LogicalPlan::Repartition(Repartition { input, .. }) => {
                 input.accept(visitor)?
@@ -974,6 +1022,7 @@ impl LogicalPlan {
                         }
                         Ok(())
                     }
+                    LogicalPlan::Subquery(Subquery { .. }) => write!(f, "Subquery"),
                     LogicalPlan::Filter(Filter {
                         predicate: ref expr,
                         ..

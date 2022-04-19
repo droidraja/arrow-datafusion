@@ -51,6 +51,7 @@ message LogicalPlanNode {
     LogicalExtensionNode extension = 17;
     CreateCatalogSchemaNode create_catalog_schema = 18;
     UnionNode union = 19;
+    SubqueryNode subquery = 20;
   }
 }
 
@@ -111,6 +112,11 @@ message ProjectionNode {
   oneof optional_alias {
     string alias = 3;
   }
+}
+
+message SubqueryNode {
+  LogicalPlanNode input = 1;
+  repeated LogicalPlanNode sub_queries = 2;
 }
 
 message SelectionNode {
