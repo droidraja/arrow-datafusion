@@ -156,7 +156,7 @@ pub fn from_plan(
         }
         LogicalPlan::Subquery(Subquery { schema, .. }) => {
             Ok(LogicalPlan::Subquery(Subquery {
-`                subqueries: inputs[1..inputs.len()].to_vec(),
+                subqueries: inputs[1..inputs.len()].to_vec(),
                 input: Arc::new(inputs[0].clone()),
                 schema: schema.clone(),
             }))
