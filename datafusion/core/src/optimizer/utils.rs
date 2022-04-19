@@ -19,7 +19,9 @@
 
 use super::optimizer::OptimizerRule;
 use crate::execution::context::ExecutionProps;
-use crate::logical_plan::plan::{Aggregate, Analyze, Extension, Filter, Join, Projection, Sort, Subquery, Window};
+use crate::logical_plan::plan::{
+    Aggregate, Analyze, Extension, Filter, Join, Projection, Sort, Subquery, Window,
+};
 
 use crate::logical_plan::{
     build_join_schema, Column, CreateMemoryTable, DFSchemaRef, Expr, ExprVisitable,
@@ -341,7 +343,10 @@ pub fn expr_sub_expressions(expr: &Expr) -> Result<Vec<Expr>> {
             }
             Ok(expr_list)
         }
-        Expr::Column(_) | Expr::OuterColumn(_, _) | Expr::Literal(_) | Expr::ScalarVariable(_, _) => Ok(vec![]),
+        Expr::Column(_)
+        | Expr::OuterColumn(_, _)
+        | Expr::Literal(_)
+        | Expr::ScalarVariable(_, _) => Ok(vec![]),
         Expr::Between {
             expr, low, high, ..
         } => Ok(vec![

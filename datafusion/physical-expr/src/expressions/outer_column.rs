@@ -25,8 +25,8 @@ use arrow::{
 };
 
 use crate::PhysicalExpr;
-use datafusion_common::Result;
 use datafusion_common::OuterQueryCursor;
+use datafusion_common::Result;
 use datafusion_expr::ColumnarValue;
 
 /// Represents the column at a given index in a RecordBatch
@@ -60,17 +60,27 @@ impl PhysicalExpr for OuterColumn {
 
     /// Get the data type of this expression, given the schema of the input
     fn data_type(&self, _: &Schema) -> Result<DataType> {
-        Ok(self.outer_query_cursor.schema().field_with_name(self.name.as_str())?.data_type().clone())
+        Ok(self
+            .outer_query_cursor
+            .schema()
+            .field_with_name(self.name.as_str())?
+            .data_type()
+            .clone())
     }
 
     /// Decide whehter this expression is nullable, given the schema of the input
     fn nullable(&self, _: &Schema) -> Result<bool> {
-        Ok(self.outer_query_cursor.schema().field_with_name(self.name.as_str())?.is_nullable())
+        Ok(self
+            .outer_query_cursor
+            .schema()
+            .field_with_name(self.name.as_str())?
+            .is_nullable())
     }
 
     /// Evaluate the expression
     fn evaluate(&self, _: &RecordBatch) -> Result<ColumnarValue> {
-        Ok(ColumnarValue::Scalar(self.outer_query_cursor.field_value(self.name.as_str())?))
+        Ok(ColumnarValue::Scalar(
+            self.outer_query_cursor.field_value(self.name.as_str())?,
+        ))
     }
 }
-

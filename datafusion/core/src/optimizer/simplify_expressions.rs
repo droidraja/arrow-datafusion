@@ -1177,7 +1177,7 @@ mod tests {
         let execution_props = ExecutionProps {
             query_execution_start_time: *date_time,
             var_providers: None,
-            outer_query_cursors: vec![]
+            outer_query_cursors: vec![],
         };
 
         let mut const_evaluator = ConstEvaluator::new(&execution_props);
@@ -1736,7 +1736,7 @@ mod tests {
         let execution_props = ExecutionProps {
             query_execution_start_time: *date_time,
             var_providers: None,
-            outer_query_cursors: vec![]
+            outer_query_cursors: vec![],
         };
 
         let err = rule
@@ -1754,7 +1754,7 @@ mod tests {
         let execution_props = ExecutionProps {
             query_execution_start_time: *date_time,
             var_providers: None,
-            outer_query_cursors: vec![]
+            outer_query_cursors: vec![],
         };
 
         let optimized_plan = rule

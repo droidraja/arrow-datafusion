@@ -18,13 +18,13 @@
 mod column;
 mod dfschema;
 mod error;
+mod outer_query_cursor;
 #[cfg(feature = "pyarrow")]
 mod pyarrow;
 mod scalar;
-mod outer_query_cursor;
 
 pub use column::Column;
 pub use dfschema::{DFField, DFSchema, DFSchemaRef, ExprSchema, ToDFSchema};
 pub use error::{DataFusionError, Result};
-pub use scalar::{ScalarType, ScalarValue};
 pub use outer_query_cursor::OuterQueryCursor;
+pub use scalar::{ScalarType, ScalarValue};

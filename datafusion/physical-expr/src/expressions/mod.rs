@@ -45,6 +45,7 @@ mod negative;
 mod not;
 mod nth_value;
 mod nullif;
+mod outer_column;
 mod rank;
 mod row_number;
 mod stats;
@@ -52,7 +53,6 @@ mod stddev;
 mod sum;
 mod try_cast;
 mod variance;
-mod outer_column;
 
 /// Module with some convenient methods used in expression building
 pub mod helpers {
@@ -96,6 +96,7 @@ pub use negative::{negative, NegativeExpr};
 pub use not::{not, NotExpr};
 pub use nth_value::NthValue;
 pub use nullif::{nullif_func, SUPPORTED_NULLIF_TYPES};
+pub use outer_column::OuterColumn;
 pub use rank::{dense_rank, percent_rank, rank};
 pub use row_number::RowNumber;
 pub use stats::StatsType;
@@ -106,7 +107,6 @@ pub use try_cast::{try_cast, TryCastExpr};
 pub use variance::{
     is_variance_support_arg_type, variance_return_type, Variance, VariancePop,
 };
-pub use outer_column::OuterColumn;
 
 /// returns the name of the state
 pub fn format_state_name(name: &str, state_name: &str) -> String {
