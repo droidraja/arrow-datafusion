@@ -93,20 +93,13 @@ pub struct SqlToRel<'a, S: ContextProvider> {
 }
 
 /// Planning context
+#[derive(Default)]
 pub struct SqlToRelContext {
     outer_query_context_schema: Vec<DFSchemaRef>,
     subqueries_plans: Option<RwLock<Vec<LogicalPlan>>>,
 }
 
 impl SqlToRelContext {
-    /// Create default context
-    pub fn new() -> Self {
-        Self {
-            outer_query_context_schema: Vec::new(),
-            subqueries_plans: None,
-        }
-    }
-
     /// Used to copy new version context based on the current one
     pub fn fork(&self) -> Self {
         Self {
@@ -116,7 +109,8 @@ impl SqlToRelContext {
     }
 
     fn add_subquery_plan(&self, plan: LogicalPlan) -> Result<()> {
-        Ok(self.subqueries_plans.as_ref().ok_or(DataFusionError::Plan(format!("Sub query {:?} planned outside of sub query context. This type of sub query isn't supported", plan)))?.write().unwrap().push(plan))
+        self.subqueries_plans.as_ref().ok_or_else(|| DataFusionError::Plan(format!("Sub query {:?} planned outside of sub query context. This type of sub query isn't supported", plan)))?.write().unwrap().push(plan);
+        Ok(())
     }
 
     fn subqueries_plans(&self) -> Result<Option<Vec<LogicalPlan>>> {
@@ -185,7 +179,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
         SqlToRel {
             schema_provider,
             table_columns_precedence_over_projection,
-            context: SqlToRelContext::new(),
+            context: SqlToRelContext::default(),
         }
     }
 

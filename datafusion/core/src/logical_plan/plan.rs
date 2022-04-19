@@ -275,9 +275,9 @@ pub struct Subquery {
 
 impl Subquery {
     /// Merge schema of main input and correlated subquery columns
-    pub fn merged_schema(input: &LogicalPlan, subqueries: &Vec<LogicalPlan>) -> DFSchema {
+    pub fn merged_schema(input: &LogicalPlan, subqueries: &[LogicalPlan]) -> DFSchema {
         subqueries.iter().fold((**input.schema()).clone(), |a, b| {
-            let mut res = a.clone();
+            let mut res = a;
             res.merge(b.schema());
             res
         })

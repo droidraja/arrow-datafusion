@@ -922,10 +922,12 @@ pub fn create_physical_expr(
             let cursor = cursors
                 .iter()
                 .find(|cur| cur.schema().field_with_name(c.name.as_str()).is_ok())
-                .ok_or(DataFusionError::Execution(format!(
-                    "Outer query cursor not found for {:?}",
-                    c
-                )))?;
+                .ok_or_else(|| {
+                    DataFusionError::Execution(format!(
+                        "Outer query cursor not found for {:?}",
+                        c
+                    ))
+                })?;
             Ok(Arc::new(OuterColumn::new(c.name.as_str(), cursor.clone())))
         }
         Expr::Literal(value) => Ok(Arc::new(Literal::new(value.clone()))),

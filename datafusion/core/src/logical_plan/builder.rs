@@ -523,7 +523,7 @@ impl LogicalPlanBuilder {
         &self,
         subqueries: impl IntoIterator<Item = impl Into<LogicalPlan>>,
     ) -> Result<Self> {
-        let subqueries = subqueries.into_iter().map(|l| l.into()).collect();
+        let subqueries = subqueries.into_iter().map(|l| l.into()).collect::<Vec<_>>();
         let schema = Arc::new(Subquery::merged_schema(&self.plan, &subqueries));
         Ok(Self::from(LogicalPlan::Subquery(Subquery {
             input: Arc::new(self.plan.clone()),

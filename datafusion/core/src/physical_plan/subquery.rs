@@ -78,7 +78,7 @@ impl SubqueryExec {
         }
 
         Ok(Self {
-            subqueries: subqueries,
+            subqueries,
             schema: Arc::new(merged_schema),
             input,
             cursor,
@@ -185,7 +185,7 @@ impl ExecutionPlan for SubqueryExec {
                 for subquery_array in subquery_arrays {
                     new_columns.push(concat(subquery_array.iter().map(|a| a.as_ref()).collect::<Vec<_>>().as_slice())?);
                 }
-                Ok(RecordBatch::try_new(schema.clone(), new_columns)?)
+                RecordBatch::try_new(schema.clone(), new_columns)
             }
         });
         Ok(Box::pin(SubQueryStream {
@@ -227,7 +227,7 @@ impl Stream for SubQueryStream {
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.size_hint.clone()
+        self.size_hint
     }
 }
 

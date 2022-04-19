@@ -54,10 +54,13 @@ impl OuterQueryCursor {
             .record_batch_and_pos
             .read()
             .map_err(|e| DataFusionError::Execution(e.to_string()))?;
-        let (batch, pos) = guard.as_ref().ok_or(DataFusionError::Execution(format!(
-            "Trying to get '{}' column on uninitialized OuterQueryCursor",
-            name
-        )))?;
+        let (batch, pos) = guard.as_ref().ok_or_else(|| {
+            DataFusionError::Execution(format!(
+                "Trying to get '{}' column on uninitialized OuterQueryCursor",
+                name
+            ))
+        })?;
+
         let col_index = batch.schema().index_of(name)?;
         ScalarValue::try_from_array(batch.column(col_index), *pos)
     }
