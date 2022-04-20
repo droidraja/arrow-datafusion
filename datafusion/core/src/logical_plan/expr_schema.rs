@@ -58,6 +58,7 @@ impl ExprSchemable for Expr {
                 expr.get_type(schema)
             }
             Expr::Column(c) => Ok(schema.data_type(c)?.clone()),
+            Expr::OuterColumn(ty, _) => Ok(ty.clone()),
             Expr::ScalarVariable(ty, _) => Ok(ty.clone()),
             Expr::Literal(l) => Ok(l.get_datatype()),
             Expr::Case { when_then_expr, .. } => when_then_expr[0].1.get_type(schema),
@@ -153,6 +154,7 @@ impl ExprSchemable for Expr {
             | Expr::Between { expr, .. }
             | Expr::InList { expr, .. } => expr.nullable(input_schema),
             Expr::Column(c) => input_schema.nullable(c),
+            Expr::OuterColumn(_, _) => Ok(true),
             Expr::Literal(value) => Ok(value.is_null()),
             Expr::Case {
                 when_then_expr,

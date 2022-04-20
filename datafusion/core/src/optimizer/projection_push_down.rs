@@ -21,7 +21,7 @@
 use crate::error::{DataFusionError, Result};
 use crate::execution::context::ExecutionProps;
 use crate::logical_plan::plan::{
-    Aggregate, Analyze, Join, Projection, TableScan, TableUDFs, Window,
+    Aggregate, Analyze, Join, Projection, Subquery, TableScan, TableUDFs, Window,
 };
 use crate::logical_plan::{
     build_join_schema, Column, DFField, DFSchema, DFSchemaRef, LogicalPlan,
@@ -489,6 +489,45 @@ fn optimize_plan(
                 inputs: new_inputs,
                 schema: Arc::new(new_schema),
                 alias: alias.clone(),
+            }))
+        }
+        LogicalPlan::Subquery(Subquery {
+            input, subqueries, ..
+        }) => {
+            let mut subquery_required_columns = HashSet::new();
+            for subquery in subqueries.iter() {
+                let mut inputs = vec![subquery];
+                while !inputs.is_empty() {
+                    let mut next_inputs = Vec::new();
+                    for input in inputs.iter() {
+                        let expr = input.expressions();
+                        utils::exprlist_to_columns(
+                            &expr,
+                            &mut subquery_required_columns,
+                        )?;
+                        next_inputs.extend(input.inputs());
+                    }
+                    inputs = next_inputs;
+                }
+            }
+            let schema = input.schema();
+            new_required_columns.extend(
+                subquery_required_columns
+                    .into_iter()
+                    .filter(|c| schema.index_of_column(c).is_ok()),
+            );
+            let input = optimize_plan(
+                optimizer,
+                input,
+                &new_required_columns,
+                has_projection,
+                execution_props,
+            )?;
+            let new_schema = Subquery::merged_schema(&input, subqueries);
+            Ok(LogicalPlan::Subquery(Subquery {
+                input: Arc::new(input),
+                schema: Arc::new(new_schema),
+                subqueries: subqueries.clone(),
             }))
         }
         // all other nodes: Add any additional columns used by

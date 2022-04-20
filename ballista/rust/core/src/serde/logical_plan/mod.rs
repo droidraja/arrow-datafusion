@@ -30,7 +30,7 @@ use datafusion::datasource::file_format::FileFormat;
 use datafusion::datasource::listing::{ListingOptions, ListingTable, ListingTableConfig};
 
 use datafusion::logical_plan::plan::{
-    Aggregate, EmptyRelation, Filter, Join, Projection, Sort, Window,
+    Aggregate, EmptyRelation, Filter, Join, Projection, Sort, Subquery, Window,
 };
 use datafusion::logical_plan::{
     Column, CreateCatalogSchema, CreateExternalTable, CrossJoin, Expr, JoinConstraint,
@@ -126,6 +126,19 @@ impl AsLogicalPlan for LogicalPlanNode {
                             }
                         }),
                     )?
+                    .build()
+                    .map_err(|e| e.into())
+            }
+            LogicalPlanType::Subquery(subquery) => {
+                let input: LogicalPlan =
+                    into_logical_plan!(subquery.input, ctx, extension_codec)?;
+                let subqueries: Vec<LogicalPlan> = subquery
+                    .subqueries
+                    .iter()
+                    .map(|i| i.try_into_logical_plan(ctx, extension_codec))
+                    .collect::<Result<_, BallistaError>>()?;
+                LogicalPlanBuilder::from(input)
+                    .subquery(subqueries)?
                     .build()
                     .map_err(|e| e.into())
             }
@@ -579,6 +592,29 @@ impl AsLogicalPlan for LogicalPlanNode {
                         optional_alias: alias
                             .clone()
                             .map(protobuf::projection_node::OptionalAlias::Alias),
+                    },
+                ))),
+            }),
+            LogicalPlan::Subquery(Subquery {
+                subqueries, input, ..
+            }) => Ok(protobuf::LogicalPlanNode {
+                logical_plan_type: Some(LogicalPlanType::Subquery(Box::new(
+                    protobuf::SubqueryNode {
+                        input: Some(Box::new(
+                            protobuf::LogicalPlanNode::try_from_logical_plan(
+                                input.as_ref(),
+                                extension_codec,
+                            )?,
+                        )),
+                        subqueries: subqueries
+                            .iter()
+                            .map(|p| {
+                                protobuf::LogicalPlanNode::try_from_logical_plan(
+                                    p,
+                                    extension_codec,
+                                )
+                            })
+                            .collect::<Result<Vec<_>, _>>()?,
                     },
                 ))),
             }),

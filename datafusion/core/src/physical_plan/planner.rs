@@ -25,8 +25,8 @@ use super::{
 };
 use crate::execution::context::{ExecutionProps, SessionState};
 use crate::logical_plan::plan::{
-    Aggregate, EmptyRelation, Filter, Join, Projection, Sort, TableScan, TableUDFs,
-    Window,
+    Aggregate, EmptyRelation, Filter, Join, Projection, Sort, Subquery, TableScan,
+    TableUDFs, Window,
 };
 use crate::logical_plan::{
     unalias, unnormalize_cols, CrossJoin, DFSchema, Expr, LogicalPlan, Operator,
@@ -35,6 +35,7 @@ use crate::logical_plan::{
 };
 use crate::logical_plan::{Limit, Values};
 use crate::physical_optimizer::optimizer::PhysicalOptimizerRule;
+use crate::physical_plan::coalesce_partitions::CoalescePartitionsExec;
 use crate::physical_plan::cross_join::CrossJoinExec;
 use crate::physical_plan::explain::ExplainExec;
 use crate::physical_plan::expressions;
@@ -48,6 +49,7 @@ use crate::physical_plan::limit::{GlobalLimitExec, LocalLimitExec};
 use crate::physical_plan::projection::ProjectionExec;
 use crate::physical_plan::repartition::RepartitionExec;
 use crate::physical_plan::sorts::sort::SortExec;
+use crate::physical_plan::subquery::SubqueryExec;
 use crate::physical_plan::udf;
 use crate::physical_plan::udtf;
 use crate::physical_plan::windows::WindowAggExec;
@@ -64,6 +66,8 @@ use arrow::compute::SortOptions;
 use arrow::datatypes::{Schema, SchemaRef};
 use arrow::{compute::can_cast_types, datatypes::DataType};
 use async_trait::async_trait;
+use datafusion_common::OuterQueryCursor;
+use datafusion_physical_expr::expressions::OuterColumn;
 use futures::future::BoxFuture;
 use futures::{FutureExt, StreamExt, TryStreamExt};
 use log::{debug, trace};
@@ -99,6 +103,7 @@ fn create_physical_name(e: &Expr, is_first_expr: bool) -> Result<String> {
                 Ok(c.flat_name())
             }
         }
+        Expr::OuterColumn(_, c) => Ok(c.flat_name()),
         Expr::Alias(_, name) => Ok(name.clone()),
         Expr::ScalarVariable(_, variable_names) => Ok(variable_names.join(".")),
         Expr::Literal(value) => Ok(format!("{:?}", value)),
@@ -844,6 +849,22 @@ impl DefaultPhysicalPlanner {
 
                     Ok(Arc::new(GlobalLimitExec::new(input, limit)))
                 }
+                LogicalPlan::Subquery(Subquery { subqueries, input, schema }) => {
+                    let cursor = Arc::new(OuterQueryCursor::new(schema.as_ref().to_owned().into()));
+                    let mut new_session_state = session_state.clone();
+                    new_session_state.execution_props = new_session_state.execution_props.with_outer_query_cursor(cursor.clone());
+                    new_session_state.config.target_partitions = 1;
+                    let subqueries = futures::stream::iter(subqueries)
+                        .then(|lp| self.create_initial_plan(lp, &new_session_state))
+                        .try_collect::<Vec<_>>()
+                        .await?.into_iter()
+                        .map(|p| -> Arc<dyn ExecutionPlan> {
+                            Arc::new(CoalescePartitionsExec::new(p))
+                        })
+                        .collect::<Vec<_>>();
+                    let input = self.create_initial_plan(input, &new_session_state).await?;
+                    Ok(Arc::new(SubqueryExec::try_new(subqueries, input, cursor)?))
+                }
                 LogicalPlan::CreateExternalTable(_) => {
                     // There is no default plan for "CREATE EXTERNAL
                     // TABLE" -- it must be handled at a higher level (so
@@ -939,6 +960,19 @@ pub fn create_physical_expr(
         Expr::Column(c) => {
             let idx = input_dfschema.index_of_column(c)?;
             Ok(Arc::new(Column::new(&c.name, idx)))
+        }
+        Expr::OuterColumn(_, c) => {
+            let cursors = execution_props.outer_query_cursors.clone();
+            let cursor = cursors
+                .iter()
+                .find(|cur| cur.schema().field_with_name(c.name.as_str()).is_ok())
+                .ok_or_else(|| {
+                    DataFusionError::Execution(format!(
+                        "Outer query cursor not found for {:?}",
+                        c
+                    ))
+                })?;
+            Ok(Arc::new(OuterColumn::new(c.name.as_str(), cursor.clone())))
         }
         Expr::Literal(value) => Ok(Arc::new(Literal::new(value.clone()))),
         Expr::ScalarVariable(_, variable_names) => {

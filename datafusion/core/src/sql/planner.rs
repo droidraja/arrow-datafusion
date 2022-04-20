@@ -20,7 +20,7 @@
 use std::collections::HashSet;
 use std::iter;
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::{convert::TryInto, vec};
 
 use crate::catalog::TableReference;
@@ -92,6 +92,44 @@ pub trait ContextProvider {
 pub struct SqlToRel<'a, S: ContextProvider> {
     schema_provider: &'a S,
     table_columns_precedence_over_projection: bool,
+    context: SqlToRelContext,
+}
+
+/// Planning context
+#[derive(Default)]
+pub struct SqlToRelContext {
+    outer_query_context_schema: Vec<DFSchemaRef>,
+    subqueries_plans: Option<RwLock<Vec<LogicalPlan>>>,
+}
+
+impl SqlToRelContext {
+    /// Used to copy new version context based on the current one
+    pub fn fork(&self) -> Self {
+        Self {
+            outer_query_context_schema: self.outer_query_context_schema.clone(),
+            subqueries_plans: None,
+        }
+    }
+
+    fn add_subquery_plan(&self, plan: LogicalPlan) -> Result<()> {
+        self.subqueries_plans.as_ref().ok_or_else(|| DataFusionError::Plan(format!("Sub query {:?} planned outside of sub query context. This type of sub query isn't supported", plan)))?.write().unwrap().push(plan);
+        Ok(())
+    }
+
+    fn subqueries_plans(&self) -> Result<Option<Vec<LogicalPlan>>> {
+        Ok(if let Some(subqueries) = self.subqueries_plans.as_ref() {
+            Some(
+                subqueries
+                    .read()
+                    .map_err(|e| DataFusionError::Plan(e.to_string()))?
+                    .iter()
+                    .cloned()
+                    .collect(),
+            )
+        } else {
+            None
+        })
+    }
 }
 
 fn plan_key(key: SQLExpr) -> Result<ScalarValue> {
@@ -144,6 +182,19 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
         SqlToRel {
             schema_provider,
             table_columns_precedence_over_projection,
+            context: SqlToRelContext::default(),
+        }
+    }
+
+    /// Creates new version of SqlToRel with forked planning context
+    pub fn with_context(&self, f: impl FnOnce(&mut SqlToRelContext)) -> Self {
+        let mut context = self.context.fork();
+        f(&mut context);
+        SqlToRel {
+            schema_provider: self.schema_provider,
+            table_columns_precedence_over_projection: self
+                .table_columns_precedence_over_projection,
+            context,
         }
     }
 
@@ -877,6 +928,17 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
         let mut select_exprs =
             self.prepare_select_exprs(&plan, select.projection, empty_from)?;
 
+        // TODO: SUBQUERY
+        // let with_outer_query_context =
+        //     self.with_context(|c| c.subqueries_plans = Some(RwLock::new(Vec::new())));
+        // let select_exprs = with_outer_query_context.prepare_select_exprs(
+        //     &plan,
+        //     select.projection,
+        //     empty_from,
+        // )?;
+
+        // let plan = with_outer_query_context.wrap_with_subquery_plan_if_necessary(plan)?;
+
         // create proxy node to handle udtfs and rewrite udtfs to columns (returning by TableUDFs Node)
         if includes_udtf(select_exprs.clone()) {
             plan = table_udfs(plan, select_exprs.clone()).unwrap();
@@ -1037,6 +1099,26 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
         project_with_alias(plan, select_exprs_post_aggr, alias)
     }
 
+    fn wrap_with_subquery_plan_if_necessary(
+        &self,
+        plan: LogicalPlan,
+    ) -> Result<LogicalPlan> {
+        Ok(if let Some(subqueries) = &self.context.subqueries_plans {
+            let subqueries = subqueries
+                .read()
+                .map_err(|e| DataFusionError::Plan(e.to_string()))?;
+            if !subqueries.is_empty() {
+                LogicalPlanBuilder::from(plan)
+                    .subquery(subqueries.clone())?
+                    .build()?
+            } else {
+                plan
+            }
+        } else {
+            plan
+        })
+    }
+
     /// Returns the `Expr`'s corresponding to a SQL query's SELECT expressions.
     ///
     /// Wildcards are expanded into the concrete list of columns.
@@ -1047,33 +1129,33 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
         empty_from: bool,
     ) -> Result<Vec<Expr>> {
         let input_schema = plan.schema();
-        projection
+        let iter = projection
             .into_iter()
             .map(|expr| self.sql_select_to_rex(expr, input_schema))
             .collect::<Result<Vec<Expr>>>()?
-            .into_iter()
-            .map(|expr| {
-                Ok(match expr {
-                    Expr::Wildcard => {
-                        if empty_from {
-                            return Err(DataFusionError::Plan(
-                                "SELECT * with no tables specified is not valid"
-                                    .to_string(),
-                            ));
-                        }
-                        expand_wildcard(input_schema, plan)?
+            .into_iter();
+        let plan = self.wrap_with_subquery_plan_if_necessary(plan.clone())?;
+        iter.map(|expr| {
+            Ok(match expr {
+                Expr::Wildcard => {
+                    if empty_from {
+                        return Err(DataFusionError::Plan(
+                            "SELECT * with no tables specified is not valid".to_string(),
+                        ));
                     }
-                    Expr::QualifiedWildcard { ref qualifier } => {
-                        expand_qualified_wildcard(qualifier, input_schema, plan)?
-                    }
-                    _ => vec![normalize_col(expr, plan)?],
-                })
+                    expand_wildcard(input_schema, &plan)?
+                }
+                Expr::QualifiedWildcard { ref qualifier } => {
+                    expand_qualified_wildcard(qualifier, input_schema, &plan)?
+                }
+                _ => vec![normalize_col(expr, &plan)?],
             })
-            .flat_map(|res| match res {
-                Ok(v) => v.into_iter().map(Ok).collect(),
-                Err(e) => vec![Err(e)],
-            })
-            .collect::<Result<Vec<Expr>>>()
+        })
+        .flat_map(|res| match res {
+            Ok(v) => v.into_iter().map(Ok).collect(),
+            Err(e) => vec![Err(e)],
+        })
+        .collect::<Result<Vec<Expr>>>()
     }
 
     /// Wrap a plan in a projection
@@ -1233,10 +1315,26 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
             .try_for_each(|col| match col {
                 Expr::Column(col) => match &col.relation {
                     Some(r) => {
+                        if let Some(plans) = self.context.subqueries_plans()? {
+                            if plans.into_iter().any(|p| {
+                                p.schema().field_with_qualified_name(r, &col.name).is_ok()
+                            }) {
+                                return Ok(());
+                            }
+                        }
                         schema.field_with_qualified_name(r, &col.name)?;
                         Ok(())
                     }
                     None => {
+                        if let Some(plans) = self.context.subqueries_plans()? {
+                            if plans.into_iter().any(|p| {
+                                !p.schema()
+                                    .fields_with_unqualified_name(&col.name)
+                                    .is_empty()
+                            }) {
+                                return Ok(());
+                            }
+                        }
                         if !schema.fields_with_unqualified_name(&col.name).is_empty() {
                             Ok(())
                         } else {
@@ -1532,6 +1630,14 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                     // interpret names with '.' as if they were
                     // compound indenfiers, but this is not a compound
                     // identifier. (e.g. it is "foo.bar" not foo.bar)
+
+                    if let Some(f) = self.context.outer_query_context_schema.iter().find_map(|s| s.field_with_unqualified_name(&id.value).ok()) {
+                        return Ok(Expr::OuterColumn(f.data_type().clone(), Column {
+                            relation: None,
+                            name: id.value,
+                        }))
+                    }
+
                     Ok(Expr::Column(Column {
                         relation: None,
                         name: id.value,
@@ -1568,6 +1674,14 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                     match (var_names.pop(), var_names.pop()) {
                         (Some(name), Some(relation)) if var_names.is_empty() => {
                             // table.column identifier
+
+                            if let Some(f) = self.context.outer_query_context_schema.iter().find_map(|s| s.field_with_qualified_name(&relation, &name).ok()) {
+                                return Ok(Expr::OuterColumn(f.data_type().clone(), Column {
+                                    relation: Some(relation),
+                                    name,
+                                }))
+                            }
+
                             Ok(Expr::Column(Column {
                                 relation: Some(relation),
                                 name,
@@ -1897,6 +2011,25 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
             }
 
             SQLExpr::Nested(e) => self.sql_expr_to_logical_expr(*e, schema),
+
+            SQLExpr::Subquery(q) => {
+                let with_outer_query_context = self.with_context(|c| c.outer_query_context_schema.push(Arc::new(schema.clone())));
+                let plan = with_outer_query_context.query_to_plan(*q)?;
+                let fields = plan.schema().fields();
+                if fields.len() != 1 {
+                    return Err(DataFusionError::Plan(format!("Correlated sub query requires only one column in result set but found: {:?}", fields)));
+                }
+                let column = fields.iter().next().unwrap().qualified_column();
+                self.context.add_subquery_plan(plan)?;
+                Ok(Expr::Column(column))
+            }
+
+            SQLExpr::DotExpr { expr, field } => {
+                Ok(Expr::GetIndexedField {
+                    expr: Box::new(self.sql_expr_to_logical_expr(*expr, schema)?),
+                    key: ScalarValue::Utf8(Some(field.value)),
+                })
+            }
 
             _ => Err(DataFusionError::NotImplemented(format!(
                 "Unsupported ast node {:?} in sqltorel",
@@ -4255,5 +4388,29 @@ mod tests {
         let expected = "SQL error: ParserError(\"WITH query name \\\"a\\\" specified more than once\")";
         let result = logical_plan(sql).err().unwrap();
         assert_eq!(expected, format!("{}", result));
+    }
+
+    #[test]
+    fn subquery() {
+        let sql = "select person.id, (select lineitem.l_item_id from lineitem where person.id = lineitem.l_item_id limit 1) from person";
+        let expected = "Projection: #person.id, #lineitem.l_item_id\
+                        \n  Subquery\
+                        \n    TableScan: person projection=None\
+                        \n    Limit: 1\
+                        \n      Projection: #lineitem.l_item_id\
+                        \n        Filter: ^#person.id = #lineitem.l_item_id\
+                        \n          TableScan: lineitem projection=None";
+        quick_test(sql, expected);
+    }
+
+    #[test]
+    fn subquery_no_from() {
+        let sql = "select person.id, (select person.age + 1) from person";
+        let expected = "Projection: #person.id, #person.age + Int64(1)\
+                        \n  Subquery\
+                        \n    TableScan: person projection=None\
+                        \n    Projection: ^#person.age + Int64(1)\
+                        \n      EmptyRelation";
+        quick_test(sql, expected);
     }
 }
