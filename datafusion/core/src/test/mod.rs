@@ -111,12 +111,10 @@ pub fn partitioned_csv_config(
 
         files
             .into_iter()
-            .map(
-                |f| vec![local_unpartitioned_file(f.to_str().unwrap().to_owned()).into()],
-            )
+            .map(|f| vec![local_unpartitioned_file(f.to_str().unwrap().to_owned())])
             .collect::<Vec<_>>()
     } else {
-        vec![vec![local_unpartitioned_file(path).into()]]
+        vec![vec![local_unpartitioned_file(path)]]
     };
 
     Ok(FileScanConfig {

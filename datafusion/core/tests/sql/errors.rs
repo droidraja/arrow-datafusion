@@ -83,7 +83,7 @@ async fn query_cte() -> Result<()> {
     assert_eq!(
         actual,
         vec![
-            "Limit: 100",
+            "Limit: skip=None, fetch=100",
             "  Projection: #Q1.c1",
             "    Projection: #aggregate_test_100.c1, alias=Q1",
             "      TableScan: aggregate_test_100 projection=None"
@@ -100,7 +100,7 @@ async fn query_cte() -> Result<()> {
     assert_eq!(
         actual,
         vec![
-            "Limit: 100",
+            "Limit: skip=None, fetch=100",
             "  Projection: #r.c1",
             "    Projection: #Q1.c1, alias=r",
             "      Projection: #aggregate_test_100.c1, alias=Q1",
