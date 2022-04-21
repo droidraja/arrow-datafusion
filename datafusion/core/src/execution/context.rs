@@ -3371,23 +3371,21 @@ mod tests {
                 .downcast_ref::<Int64Array>()
                 .expect("cast failed");
 
-            let mut indexes: Vec<usize> = Vec::new();
+            let mut batch_sizes: Vec<usize> = Vec::new();
             let mut builder = Int64Builder::new(1);
 
-            let mut current_index: usize = 0;
             for (start, end) in start_arr.iter().zip(end_arr.iter()) {
                 let start_number = start.unwrap();
                 let end_number = end.unwrap();
-                let count: usize = (end_number - start_number).try_into().unwrap();
-                current_index += count;
-                indexes.push(current_index);
+                let count: usize = (end_number - start_number + 1).try_into().unwrap();
+                batch_sizes.push(count);
 
                 for i in start_number..end_number + 1 {
                     builder.append_value(i).unwrap();
                 }
             }
 
-            Ok((Arc::new(builder.finish()) as ArrayRef, indexes))
+            Ok((Arc::new(builder.finish()) as ArrayRef, batch_sizes))
         })
     }
 
@@ -3401,12 +3399,10 @@ mod tests {
             let mut string_builder = StringBuilder::new(1);
             let mut int_builder = Int64Builder::new(1);
 
-            let mut indexes: Vec<usize> = Vec::new();
-            let mut current_index: usize = 0;
+            let mut batch_sizes: Vec<usize> = Vec::new();
             for start in start_arr.iter() {
                 let start_number = start.unwrap();
-                indexes.push(current_index);
-                current_index += 1;
+                batch_sizes.push(1);
 
                 string_builder.append_value("test".to_string()).unwrap();
                 int_builder.append_value(start_number.clone()).unwrap();
@@ -3424,7 +3420,7 @@ mod tests {
                 builder.append(true).unwrap();
             }
 
-            Ok((Arc::new(builder.finish()) as ArrayRef, indexes))
+            Ok((Arc::new(builder.finish()) as ArrayRef, batch_sizes))
         })
     }
 

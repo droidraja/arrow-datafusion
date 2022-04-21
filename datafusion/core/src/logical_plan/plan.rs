@@ -27,7 +27,6 @@ use crate::logical_plan::dfschema::DFSchemaRef;
 use crate::sql::parser::FileType;
 use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
 use datafusion_common::DFSchema;
-use datafusion_expr::TableUDF;
 use std::fmt::Formatter;
 use std::{
     collections::HashSet,

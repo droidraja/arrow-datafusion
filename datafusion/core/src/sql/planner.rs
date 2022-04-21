@@ -37,7 +37,7 @@ use crate::logical_plan::{
 use crate::optimizer::utils::exprlist_to_columns;
 use crate::prelude::JoinType;
 use crate::scalar::ScalarValue;
-use crate::sql::utils::{make_decimal_type, normalize_ident};
+use crate::sql::utils::{find_udtf_exprs, make_decimal_type, normalize_ident};
 use crate::{
     error::{DataFusionError, Result},
     physical_plan::udaf::AggregateUDF,
@@ -922,7 +922,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
         let empty_from = matches!(plans.first(), Some(LogicalPlan::EmptyRelation(_)));
 
         // process `where` clause
-        let mut plan = self.plan_selection(select.selection, plans)?;
+        let plan = self.plan_selection(select.selection, plans)?;
 
         // process the SELECT expressions, with wildcards expanded.
         let with_outer_query_context =
@@ -937,8 +937,9 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
             with_outer_query_context.wrap_with_subquery_plan_if_necessary(plan)?;
 
         // create proxy node to handle udtfs and rewrite udtfs to columns (returning by TableUDFs Node)
-        if includes_udtf(select_exprs.clone()) {
-            plan = table_udfs(plan, select_exprs.clone()).unwrap();
+        let udtf_exprs = find_udtf_exprs(select_exprs.as_slice());
+        if !udtf_exprs.is_empty() {
+            plan = table_udfs(plan, udtf_exprs.clone()).unwrap();
             select_exprs = rewrite_udtfs_to_columns(
                 select_exprs,
                 plan.schema().clone().as_ref().to_owned(),
@@ -2511,27 +2512,6 @@ fn parse_sql_number(n: &str) -> Result<Expr> {
         Ok(n) => Ok(lit(n)),
         Err(_) => Ok(lit(n.parse::<f64>().unwrap())),
     }
-}
-
-fn includes_udtf(exprs: Vec<Expr>) -> bool {
-    for expr in exprs.iter() {
-        if let Expr::TableUDF { .. } = expr {
-            return true;
-        }
-        if let Expr::BinaryExpr { left, right, .. } = expr {
-            let b_exprs: Vec<Expr> = [*left.clone(), *right.clone()].to_vec();
-            if includes_udtf(b_exprs) {
-                return true;
-            }
-        }
-        if let Expr::Alias(a_expr, ..) = expr {
-            if includes_udtf([a_expr.as_ref().clone()].to_vec()) {
-                return true;
-            }
-        }
-    }
-
-    false
 }
 
 #[cfg(test)]
