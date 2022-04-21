@@ -29,21 +29,22 @@ use crate::logical_plan::window_frames::{WindowFrame, WindowFrameUnits};
 use crate::logical_plan::Expr::Alias;
 use crate::logical_plan::{
     and, builder::expand_qualified_wildcard, builder::expand_wildcard, col, lit,
-    normalize_col, union_with_alias, Column, CreateCatalogSchema,
-    CreateExternalTable as PlanCreateExternalTable, CreateMemoryTable, DFSchema,
-    DFSchemaRef, DropTable, Expr, LogicalPlan, LogicalPlanBuilder, Operator, PlanType,
-    ToDFSchema, ToStringifiedPlan,
+    normalize_col, rewrite_udtfs_to_columns, union_with_alias, Column,
+    CreateCatalogSchema, CreateExternalTable as PlanCreateExternalTable,
+    CreateMemoryTable, DFSchema, DFSchemaRef, DropTable, Expr, LogicalPlan,
+    LogicalPlanBuilder, Operator, PlanType, ToDFSchema, ToStringifiedPlan,
 };
 use crate::optimizer::utils::exprlist_to_columns;
 use crate::prelude::JoinType;
 use crate::scalar::ScalarValue;
-use crate::sql::utils::{make_decimal_type, normalize_ident};
+use crate::sql::utils::{find_udtf_exprs, make_decimal_type, normalize_ident};
 use crate::{
     error::{DataFusionError, Result},
     physical_plan::udaf::AggregateUDF,
 };
 use crate::{
     physical_plan::udf::ScalarUDF,
+    physical_plan::udtf::TableUDF,
     physical_plan::{aggregates, functions, window_functions},
     sql::parser::{CreateExternalTable, FileType, Statement as DFStatement},
 };
@@ -68,7 +69,7 @@ use super::{
         resolve_aliases_to_exprs, resolve_positions_to_exprs,
     },
 };
-use crate::logical_plan::builder::project_with_alias;
+use crate::logical_plan::builder::{project_with_alias, table_udfs};
 use crate::logical_plan::plan::{Analyze, Explain};
 use crate::physical_plan::functions::BuiltinScalarFunction;
 
@@ -79,6 +80,8 @@ pub trait ContextProvider {
     fn get_table_provider(&self, name: TableReference) -> Option<Arc<dyn TableProvider>>;
     /// Getter for a UDF description
     fn get_function_meta(&self, name: &str) -> Option<Arc<ScalarUDF>>;
+    /// Getter for a UDTF description
+    fn get_table_function_meta(&self, name: &str) -> Option<Arc<TableUDF>>;
     /// Getter for a UDAF description
     fn get_aggregate_meta(&self, name: &str) -> Option<Arc<AggregateUDF>>;
     /// Getter for system/user-defined variable type
@@ -924,16 +927,28 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
         // process the SELECT expressions, with wildcards expanded.
         let with_outer_query_context =
             self.with_context(|c| c.subqueries_plans = Some(RwLock::new(Vec::new())));
-        let select_exprs = with_outer_query_context.prepare_select_exprs(
+        let mut select_exprs = with_outer_query_context.prepare_select_exprs(
             &plan,
             select.projection,
             empty_from,
         )?;
 
-        let plan = with_outer_query_context.wrap_with_subquery_plan_if_necessary(plan)?;
+        let mut plan =
+            with_outer_query_context.wrap_with_subquery_plan_if_necessary(plan)?;
+
+        // create proxy node to handle udtfs and rewrite udtfs to columns (returning by TableUDFs Node)
+        let udtf_exprs = find_udtf_exprs(select_exprs.as_slice());
+        if !udtf_exprs.is_empty() {
+            plan = table_udfs(plan, udtf_exprs).unwrap();
+            select_exprs = rewrite_udtfs_to_columns(
+                select_exprs,
+                plan.schema().clone().as_ref().to_owned(),
+            );
+        }
 
         // having and group by clause may reference aliases defined in select projection
         let projected_plan = self.project(plan.clone(), select_exprs.clone())?;
+
         let combined_schema = if self.table_columns_precedence_over_projection {
             let mut combined_schema = (**plan.schema()).clone();
             combined_schema.merge(projected_plan.schema());
@@ -1979,10 +1994,16 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                             let args = self.function_args_to_expr(function.args, schema)?;
                             Ok(Expr::AggregateUDF { fun: fm, args })
                         }
-                        _ => Err(DataFusionError::Plan(format!(
-                            "Invalid function '{}'",
-                            name
-                        ))),
+                        None => match self.schema_provider.get_table_function_meta(&name) {
+                            Some(fm) => {
+                                let args = self.function_args_to_expr(function.args, schema)?;
+                                Ok(Expr::TableUDF { fun: fm, args })
+                            }
+                            _ => Err(DataFusionError::Plan(format!(
+                                "Invalid function '{}'",
+                                name
+                            ))),
+                        },
                     },
                 }
             }
@@ -4281,6 +4302,10 @@ mod tests {
                 ))),
                 _ => None,
             }
+        }
+
+        fn get_table_function_meta(&self, _name: &str) -> Option<Arc<TableUDF>> {
+            unimplemented!()
         }
 
         fn get_aggregate_meta(&self, _name: &str) -> Option<Arc<AggregateUDF>> {

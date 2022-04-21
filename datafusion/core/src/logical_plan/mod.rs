@@ -35,7 +35,8 @@ pub mod plan;
 mod registry;
 pub mod window_frames;
 pub use builder::{
-    build_join_schema, union_with_alias, LogicalPlanBuilder, UNNAMED_TABLE,
+    build_join_schema, build_table_udf_schema, union_with_alias, LogicalPlanBuilder,
+    UNNAMED_TABLE,
 };
 pub use datafusion_expr::expr_fn::binary_expr;
 pub use dfschema::{DFField, DFSchema, DFSchemaRef, ToDFSchema};
@@ -44,18 +45,19 @@ pub use expr::{
     abs, acos, and, approx_distinct, approx_percentile_cont, array, ascii, asin, atan,
     avg, bit_length, btrim, call_fn, case, ceil, character_length, chr, col,
     columnize_expr, combine_filters, concat, concat_expr, concat_ws, concat_ws_expr, cos,
-    count, count_distinct, create_udaf, create_udf, date_part, date_trunc, digest, exp,
-    exprlist_to_fields, floor, in_list, initcap, left, length, lit, lit_timestamp_nano,
-    ln, log10, log2, lower, lpad, ltrim, max, md5, min, now, now_expr, nullif,
-    octet_length, or, random, regexp_match, regexp_replace, repeat, replace, reverse,
-    right, round, rpad, rtrim, sha224, sha256, sha384, sha512, signum, sin, split_part,
-    sqrt, starts_with, strpos, substr, sum, tan, to_hex, to_timestamp_micros,
-    to_timestamp_millis, to_timestamp_seconds, translate, trim, trunc, unalias, upper,
-    when, Column, Expr, ExprSchema, Literal,
+    count, count_distinct, create_udaf, create_udf, create_udtf, date_part, date_trunc,
+    digest, exp, exprlist_to_fields, floor, in_list, initcap, left, length, lit,
+    lit_timestamp_nano, ln, log10, log2, lower, lpad, ltrim, max, md5, min, now,
+    now_expr, nullif, octet_length, or, random, regexp_match, regexp_replace, repeat,
+    replace, reverse, right, round, rpad, rtrim, sha224, sha256, sha384, sha512, signum,
+    sin, split_part, sqrt, starts_with, strpos, substr, sum, tan, to_hex,
+    to_timestamp_micros, to_timestamp_millis, to_timestamp_seconds, translate, trim,
+    trunc, unalias, upper, when, Column, Expr, ExprSchema, Literal,
 };
 pub use expr_rewriter::{
     normalize_col, normalize_cols, replace_col, rewrite_sort_cols_by_aggs,
-    unnormalize_col, unnormalize_cols, ExprRewritable, ExprRewriter, RewriteRecursion,
+    rewrite_udtfs_to_columns, unnormalize_col, unnormalize_cols, ExprRewritable,
+    ExprRewriter, RewriteRecursion,
 };
 pub use expr_schema::ExprSchemable;
 pub use expr_simplier::{ExprSimplifiable, SimplifyInfo};

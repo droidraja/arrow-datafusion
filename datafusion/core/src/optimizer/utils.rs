@@ -20,9 +20,11 @@
 use super::optimizer::OptimizerRule;
 use crate::execution::context::ExecutionProps;
 use crate::logical_plan::plan::{
-    Aggregate, Analyze, Extension, Filter, Join, Projection, Sort, Subquery, Window,
+    Aggregate, Analyze, Extension, Filter, Join, Projection, Sort, Subquery, TableUDFs,
+    Window,
 };
 
+use crate::logical_plan::builder::build_table_udf_schema;
 use crate::logical_plan::{
     build_join_schema, Column, CreateMemoryTable, DFSchemaRef, Expr, ExprVisitable,
     Limit, LogicalPlan, LogicalPlanBuilder, Operator, Partitioning, Recursion,
@@ -82,6 +84,7 @@ impl ExpressionVisitor for ColumnNameVisitor<'_> {
             | Expr::Sort { .. }
             | Expr::ScalarFunction { .. }
             | Expr::ScalarUDF { .. }
+            | Expr::TableUDF { .. }
             | Expr::WindowFunction { .. }
             | Expr::AggregateFunction { .. }
             | Expr::AggregateUDF { .. }
@@ -159,6 +162,13 @@ pub fn from_plan(
                 subqueries: inputs[1..inputs.len()].to_vec(),
                 input: Arc::new(inputs[0].clone()),
                 schema: schema.clone(),
+            }))
+        }
+        LogicalPlan::TableUDFs(TableUDFs { .. }) => {
+            Ok(LogicalPlan::TableUDFs(TableUDFs {
+                expr: expr.to_vec(),
+                input: Arc::new(inputs[0].clone()),
+                schema: build_table_udf_schema(&inputs[0], expr)?,
             }))
         }
         LogicalPlan::Values(Values { schema, .. }) => Ok(LogicalPlan::Values(Values {
@@ -306,6 +316,7 @@ pub fn expr_sub_expressions(expr: &Expr) -> Result<Vec<Expr>> {
         | Expr::GetIndexedField { expr, .. } => Ok(vec![expr.as_ref().to_owned()]),
         Expr::ScalarFunction { args, .. }
         | Expr::ScalarUDF { args, .. }
+        | Expr::TableUDF { args, .. }
         | Expr::AggregateFunction { args, .. }
         | Expr::AggregateUDF { args, .. } => Ok(args.clone()),
         Expr::WindowFunction {
@@ -388,6 +399,10 @@ pub fn rewrite_expression(expr: &Expr, expressions: &[Expr]) -> Result<Expr> {
             args: expressions.to_vec(),
         }),
         Expr::ScalarUDF { fun, .. } => Ok(Expr::ScalarUDF {
+            fun: fun.clone(),
+            args: expressions.to_vec(),
+        }),
+        Expr::TableUDF { fun, .. } => Ok(Expr::TableUDF {
             fun: fun.clone(),
             args: expressions.to_vec(),
         }),

@@ -27,6 +27,7 @@ mod operator;
 mod signature;
 mod udaf;
 mod udf;
+mod udtf;
 mod window_frame;
 mod window_function;
 
@@ -38,12 +39,13 @@ pub use expr::Expr;
 pub use expr_fn::{col, sum};
 pub use function::{
     AccumulatorFunctionImplementation, ReturnTypeFunction, ScalarFunctionImplementation,
-    StateTypeFunction,
+    StateTypeFunction, TableFunctionImplementation,
 };
 pub use literal::{lit, lit_timestamp_nano, Literal, TimestampLiteral};
 pub use operator::Operator;
 pub use signature::{Signature, TypeSignature, Volatility};
 pub use udaf::AggregateUDF;
 pub use udf::ScalarUDF;
+pub use udtf::TableUDF;
 pub use window_frame::{WindowFrame, WindowFrameBound, WindowFrameUnits};
 pub use window_function::{BuiltInWindowFunction, WindowFunction};

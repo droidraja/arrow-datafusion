@@ -19,6 +19,7 @@
 
 use crate::Accumulator;
 use crate::ColumnarValue;
+use arrow::array::ArrayRef;
 use arrow::datatypes::DataType;
 use datafusion_common::Result;
 use std::sync::Arc;
@@ -33,6 +34,10 @@ use std::sync::Arc;
 /// the result array size).
 pub type ScalarFunctionImplementation =
     Arc<dyn Fn(&[ColumnarValue]) -> Result<ColumnarValue> + Send + Sync>;
+
+/// Table function. Second tuple
+pub type TableFunctionImplementation =
+    Arc<dyn Fn(&[ColumnarValue], usize) -> Result<(ArrayRef, Vec<usize>)> + Send + Sync>;
 
 /// A function's return type
 pub type ReturnTypeFunction =

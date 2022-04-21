@@ -145,6 +145,7 @@ impl ExprVisitable for Expr {
             }
             Expr::ScalarFunction { args, .. }
             | Expr::ScalarUDF { args, .. }
+            | Expr::TableUDF { args, .. }
             | Expr::AggregateFunction { args, .. }
             | Expr::AggregateUDF { args, .. } => args
                 .iter()

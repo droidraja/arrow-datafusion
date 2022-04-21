@@ -18,13 +18,15 @@
 //! Physical query planner
 
 use super::analyze::AnalyzeExec;
+use super::table_fun::TableFunExec;
 use super::{
     aggregates, empty::EmptyExec, expressions::binary, functions,
     hash_join::PartitionMode, udaf, union::UnionExec, values::ValuesExec, windows,
 };
 use crate::execution::context::{ExecutionProps, SessionState};
 use crate::logical_plan::plan::{
-    Aggregate, EmptyRelation, Filter, Join, Projection, Sort, Subquery, TableScan, Window,
+    Aggregate, EmptyRelation, Filter, Join, Projection, Sort, Subquery, TableScan,
+    TableUDFs, Window,
 };
 use crate::logical_plan::{
     unalias, unnormalize_cols, CrossJoin, DFSchema, Expr, LogicalPlan, Operator,
@@ -49,6 +51,7 @@ use crate::physical_plan::repartition::RepartitionExec;
 use crate::physical_plan::sorts::sort::SortExec;
 use crate::physical_plan::subquery::SubqueryExec;
 use crate::physical_plan::udf;
+use crate::physical_plan::udtf;
 use crate::physical_plan::windows::WindowAggExec;
 use crate::physical_plan::{join_utils, Partitioning};
 use crate::physical_plan::{AggregateExpr, ExecutionPlan, PhysicalExpr, WindowExpr};
@@ -159,6 +162,9 @@ fn create_physical_name(e: &Expr, is_first_expr: bool) -> Result<String> {
             create_function_physical_name(&fun.to_string(), false, args)
         }
         Expr::ScalarUDF { fun, args, .. } => {
+            create_function_physical_name(&fun.name, false, args)
+        }
+        Expr::TableUDF { fun, args, .. } => {
             create_function_physical_name(&fun.name, false, args)
         }
         Expr::WindowFunction { fun, args, .. } => {
@@ -578,6 +584,32 @@ impl DefaultPhysicalPlanner {
                         physical_input_schema.clone(),
                     )?) )
                 }
+                LogicalPlan::TableUDFs(TableUDFs { input, expr, .. }) => {
+                    let input_exec = self.create_initial_plan(input, session_state).await?;
+                    let input_schema = input.as_ref().schema();
+
+                    let physical_exprs = expr
+                        .iter()
+                        .map(|e| {
+                            let physical_name = physical_name(e);
+
+                            tuple_err((
+                                self.create_physical_expr(
+                                    e,
+                                    input_schema,
+                                    &input_exec.schema(),
+                                    session_state,
+                                ),
+                                physical_name,
+                            ))
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+
+                        Ok(Arc::new(TableFunExec::try_new(
+                            physical_exprs,
+                            input_exec,
+                        )?))
+                }
                 LogicalPlan::Projection(Projection { input, expr, .. }) => {
                     let input_exec = self.create_initial_plan(input, session_state).await?;
                     let input_schema = input.as_ref().schema();
@@ -628,7 +660,7 @@ impl DefaultPhysicalPlanner {
                     Ok(Arc::new(ProjectionExec::try_new(
                         physical_exprs,
                         input_exec,
-                    )?) )
+                    )?))
                 }
                 LogicalPlan::Filter(Filter {
                     input, predicate, ..
@@ -1090,6 +1122,19 @@ pub fn create_physical_expr(
             }
 
             udf::create_physical_expr(fun.clone().as_ref(), &physical_args, input_schema)
+        }
+        Expr::TableUDF { fun, args } => {
+            let mut physical_args = vec![];
+            for e in args {
+                physical_args.push(create_physical_expr(
+                    e,
+                    input_dfschema,
+                    input_schema,
+                    execution_props,
+                )?);
+            }
+
+            udtf::create_physical_expr(fun.clone().as_ref(), &physical_args, input_schema)
         }
         Expr::Between {
             expr,

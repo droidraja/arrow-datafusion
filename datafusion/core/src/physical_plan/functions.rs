@@ -48,8 +48,8 @@ use arrow::{
     datatypes::TimeUnit,
     datatypes::{DataType, Field, Int32Type, Int64Type, Schema},
 };
-use datafusion_expr::ScalarFunctionImplementation;
 pub use datafusion_expr::{BuiltinScalarFunction, Signature, TypeSignature, Volatility};
+use datafusion_expr::{ScalarFunctionImplementation, TableFunctionImplementation};
 pub use datafusion_physical_expr::array_expressions;
 pub use datafusion_physical_expr::datetime_expressions;
 pub use datafusion_physical_expr::math_expressions;
@@ -643,6 +643,7 @@ fn signature(fun: &BuiltinScalarFunction) -> Signature {
 }
 
 pub use datafusion_physical_expr::ScalarFunctionExpr;
+pub use datafusion_physical_expr::TableFunctionExpr;
 
 #[cfg(feature = "crypto_expressions")]
 macro_rules! invoke_if_crypto_expressions_feature_flag {
@@ -739,6 +740,30 @@ where
         } else {
             ScalarValue::try_from_array(&result?, 0).map(ColumnarValue::Scalar)
         }
+    })
+}
+
+/// Create a table function.
+pub fn make_table_function<F>(inner: F) -> TableFunctionImplementation
+where
+    F: Fn(&[ArrayRef]) -> Result<(ArrayRef, Vec<usize>)> + Sync + Send + 'static,
+{
+    Arc::new(move |args: &[ColumnarValue], num_rows| {
+        // to array
+        let args = args
+            .iter()
+            .map(|arg| arg.clone().into_array(num_rows))
+            .collect::<Vec<ArrayRef>>();
+
+        let result = (inner)(&args);
+
+        let to_return: (ArrayRef, Vec<usize>) = result
+            .iter()
+            .map(|(r, indexes)| (r.clone(), indexes.clone()))
+            .next()
+            .unwrap();
+
+        Ok(to_return)
     })
 }
 
