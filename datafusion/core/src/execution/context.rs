@@ -3363,6 +3363,33 @@ mod tests {
             "| 2   |                         |                             | 4 |",
             "+-----+-------------------------+-----------------------------+---+",
         ];
+
+        assert_batches_eq!(expected, &result);
+
+        let result =
+            plan_and_collect(&ctx, "SELECT * from integer_series(1,5) pos(n)").await?;
+
+        let expected = vec![
+            "+---+", "| n |", "+---+", "| 1 |", "| 2 |", "| 3 |", "| 4 |", "| 5 |",
+            "+---+",
+        ];
+
+        assert_batches_eq!(expected, &result);
+
+        let result = plan_and_collect(&ctx, "SELECT * from integer_series(1,5)").await?;
+
+        let expected = vec![
+            "+-----------------------------------+",
+            "| integer_series(Int64(1),Int64(5)) |",
+            "+-----------------------------------+",
+            "| 1                                 |",
+            "| 2                                 |",
+            "| 3                                 |",
+            "| 4                                 |",
+            "| 5                                 |",
+            "+-----------------------------------+",
+        ];
+
         assert_batches_eq!(expected, &result);
 
         Ok(())
@@ -3419,8 +3446,8 @@ mod tests {
                 let start_number = start.unwrap();
                 batch_sizes.push(1);
 
-                string_builder.append_value("test".to_string()).unwrap();
-                int_builder.append_value(start_number.clone()).unwrap();
+                string_builder.append_value("test").unwrap();
+                int_builder.append_value(start_number).unwrap();
             }
 
             let mut fields = Vec::new();
