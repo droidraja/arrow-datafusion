@@ -51,9 +51,9 @@ use parquet::file::{
 };
 
 use fmt::Debug;
+use parquet::arrow::{ArrowReader, ParquetFileArrowReader};
 use std::fmt::Formatter;
 use std::time::Duration;
-use parquet::arrow::{ArrowReader, ParquetFileArrowReader};
 
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio_stream::wrappers::ReceiverStream;
@@ -164,11 +164,11 @@ pub struct LruParquetMetadataCache {
 
 impl LruParquetMetadataCache {
     /// Creates a new LruMetadataCache
-    pub fn new(metadata_cache_capacity: u64, time_to_idle: Duration) -> Arc<Self> {
+    pub fn new(max_capacity: u64, time_to_idle: Duration) -> Arc<Self> {
         Arc::new(LruParquetMetadataCache {
             cache: moka::sync::Cache::builder()
                 .weigher(|_, value: &Arc<ParquetMetaData>| value.metadata_size())
-                .max_capacity(metadata_cache_capacity)
+                .max_capacity(max_capacity)
                 .time_to_idle(time_to_idle)
                 .build(),
         })
