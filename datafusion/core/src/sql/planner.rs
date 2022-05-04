@@ -2561,6 +2561,26 @@ pub fn convert_data_type(sql_type: &SQLDataType) -> Result<DataType> {
         SQLDataType::Timestamp => Ok(DataType::Timestamp(TimeUnit::Nanosecond, None)),
         SQLDataType::Date => Ok(DataType::Date32),
         SQLDataType::Decimal(precision, scale) => make_decimal_type(*precision, *scale),
+        SQLDataType::Regclass => Ok(DataType::Utf8),
+        SQLDataType::Custom(ObjectName(idents)) => {
+            let supported_types = [
+                "regtype",
+                "regoperator",
+                "regoper",
+                "regprocedure",
+                "regproc",
+            ];
+            for ident in idents.iter() {
+                if supported_types.contains(&ident.value.as_str()) {
+                    return Ok(DataType::Utf8);
+                }
+            }
+
+            Err(DataFusionError::NotImplemented(format!(
+                "Unsupported SQL Custom Type {:?}",
+                idents
+            )))
+        }
         other => Err(DataFusionError::NotImplemented(format!(
             "Unsupported SQL type {:?}",
             other
