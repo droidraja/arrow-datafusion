@@ -139,9 +139,10 @@ fn plan_key(key: SQLExpr) -> Result<ScalarValue> {
             ScalarValue::Int64(Some(s.parse().unwrap()))
         }
         SQLExpr::Value(Value::SingleQuotedString(s)) => ScalarValue::Utf8(Some(s)),
+        SQLExpr::Identifier(ident) => ScalarValue::Utf8(Some(ident.value)),
         _ => {
             return Err(DataFusionError::SQL(ParserError(format!(
-                "Unsuported index key expression: {}",
+                "Unsuported index key expression: {:?}",
                 key
             ))))
         }
@@ -1710,6 +1711,17 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                     Err(DataFusionError::NotImplemented(format!(
                         "map access requires an identifier, found column {} instead",
                         column
+                    )))
+                }
+            }
+
+            SQLExpr::ArrayIndex { obj, indexs } => {
+                if let SQLExpr::Identifier(ref id) = obj.as_ref() {
+                    plan_indexed(col(&id.value), indexs)
+                } else {
+                    Err(DataFusionError::NotImplemented(format!(
+                        "array index access requires an identifier, found column {} instead",
+                        obj
                     )))
                 }
             }
