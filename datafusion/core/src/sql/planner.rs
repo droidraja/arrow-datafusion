@@ -1743,8 +1743,6 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                 } else {
                     match (var_names.pop(), var_names.pop()) {
                         (Some(name), Some(relation)) if var_names.is_empty() => {
-                            // table.column identifier
-
                             if let Some(f) = self.context.outer_query_context_schema.iter().find_map(|s| s.field_with_qualified_name(&relation, &name).ok()) {
                                 return Ok(Expr::OuterColumn(f.data_type().clone(), Column {
                                     relation: Some(relation),
@@ -1752,10 +1750,19 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                                 }))
                             }
 
-                            Ok(Expr::Column(Column {
-                                relation: Some(relation),
-                                name,
-                            }))
+                            if let Some(field) = schema.fields().iter().find(|f| f.name().eq(&relation)) {
+                                // Access to a field of a column which is a structure, example: SELECT my_struct.key
+                                Ok(Expr::GetIndexedField {
+                                    expr: Box::new(Expr::Column(field.qualified_column())),
+                                    key: ScalarValue::Utf8(Some(name)),
+                                })
+                            } else {
+                                // table.column identifier
+                                Ok(Expr::Column(Column {
+                                    relation: Some(relation),
+                                    name,
+                                }))
+                            }
                         }
                         _ => Err(DataFusionError::NotImplemented(format!(
                             "Unsupported compound identifier '{:?}'",
