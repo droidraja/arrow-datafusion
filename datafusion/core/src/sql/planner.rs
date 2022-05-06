@@ -133,25 +133,7 @@ impl SqlToRelContext {
     }
 }
 
-fn plan_key(key: SQLExpr) -> Result<ScalarValue> {
-    let scalar = match key {
-        SQLExpr::Value(Value::Number(s, _)) => {
-            ScalarValue::Int64(Some(s.parse().unwrap()))
-        }
-        SQLExpr::Value(Value::SingleQuotedString(s)) => ScalarValue::Utf8(Some(s)),
-        SQLExpr::Identifier(ident) => ScalarValue::Utf8(Some(ident.value)),
-        _ => {
-            return Err(DataFusionError::SQL(ParserError(format!(
-                "Unsuported index key expression: {:?}",
-                key
-            ))))
-        }
-    };
-
-    Ok(scalar)
-}
-
-fn plan_indexed(expr: Expr, mut keys: Vec<SQLExpr>) -> Result<Expr> {
+fn plan_indexed(expr: Expr, mut keys: Vec<Expr>) -> Result<Expr> {
     let key = keys.pop().ok_or_else(|| {
         DataFusionError::SQL(ParserError(
             "Internal error: Missing index key expression".to_string(),
@@ -166,7 +148,7 @@ fn plan_indexed(expr: Expr, mut keys: Vec<SQLExpr>) -> Result<Expr> {
 
     Ok(Expr::GetIndexedField {
         expr: Box::new(expr),
-        key: plan_key(key)?,
+        key: Box::new(key),
     })
 }
 
@@ -1704,26 +1686,12 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                 }
             }
 
-            SQLExpr::MapAccess { ref column, keys } => {
-                if let SQLExpr::Identifier(ref id) = column.as_ref() {
-                    plan_indexed(col(&id.value), keys)
-                } else {
-                    Err(DataFusionError::NotImplemented(format!(
-                        "map access requires an identifier, found column {} instead",
-                        column
-                    )))
-                }
-            }
-
             SQLExpr::ArrayIndex { obj, indexs } => {
-                if let SQLExpr::Identifier(ref id) = obj.as_ref() {
-                    plan_indexed(col(&id.value), indexs)
-                } else {
-                    Err(DataFusionError::NotImplemented(format!(
-                        "array index access requires an identifier, found column {} instead",
-                        obj
-                    )))
-                }
+                let expr = self.sql_expr_to_logical_expr(*obj, schema)?;
+
+                plan_indexed(expr, indexs.into_iter()
+                    .map(|e| self.sql_expr_to_logical_expr(e, schema))
+                    .collect::<Result<Vec<_>>>()?)
             }
 
             SQLExpr::CompoundIdentifier(ids) => {
@@ -1754,7 +1722,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                                 // Access to a field of a column which is a structure, example: SELECT my_struct.key
                                 Ok(Expr::GetIndexedField {
                                     expr: Box::new(Expr::Column(field.qualified_column())),
-                                    key: ScalarValue::Utf8(Some(name)),
+                                    key: Box::new(Expr::Literal(ScalarValue::Utf8(Some(name)))),
                                 })
                             } else {
                                 // table.column identifier
@@ -2104,7 +2072,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
             SQLExpr::DotExpr { expr, field } => {
                 Ok(Expr::GetIndexedField {
                     expr: Box::new(self.sql_expr_to_logical_expr(*expr, schema)?),
-                    key: ScalarValue::Utf8(Some(field.value)),
+                    key: Box::new(Expr::Literal(ScalarValue::Utf8(Some(field.value)))),
                 })
             }
 

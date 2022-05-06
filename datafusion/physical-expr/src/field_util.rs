@@ -20,15 +20,16 @@
 use arrow::datatypes::{DataType, Field};
 use datafusion_common::ScalarValue;
 use datafusion_common::{DataFusionError, Result};
+use datafusion_expr::Expr;
 
 /// Returns the field access indexed by `key` from a [`DataType::List`] or [`DataType::Struct`]
 /// # Error
 /// Errors if
 /// * the `data_type` is not a Struct or,
 /// * there is no field key is not of the required index type
-pub fn get_indexed_field(data_type: &DataType, key: &ScalarValue) -> Result<Field> {
-    match (data_type, key) {
-        (DataType::List(lt), ScalarValue::Int64(Some(i))) => {
+pub fn get_indexed_field(data_type: &DataType, key: &Box<Expr>) -> Result<Field> {
+    match (data_type, &**key) {
+        (DataType::List(lt), Expr::Literal(ScalarValue::Int64(Some(i)))) => {
             if *i < 0 {
                 Err(DataFusionError::Plan(format!(
                     "List based indexed access requires a positive int, was {0}",
@@ -38,7 +39,11 @@ pub fn get_indexed_field(data_type: &DataType, key: &ScalarValue) -> Result<Fiel
                 Ok(Field::new(&i.to_string(), lt.data_type().clone(), false))
             }
         }
-        (DataType::Struct(fields), ScalarValue::Utf8(Some(s))) => {
+        // Allow any kind of dynamic expressions for key
+        (DataType::List(lt),_) => {
+            Ok(Field::new("unknown", lt.data_type().clone(), false))
+        }
+        (DataType::Struct(fields), Expr::Literal(ScalarValue::Utf8(Some(s)))) => {
             if s.is_empty() {
                 Err(DataFusionError::Plan(
                     "Struct based indexed access requires a non empty string".to_string(),
@@ -54,14 +59,12 @@ pub fn get_indexed_field(data_type: &DataType, key: &ScalarValue) -> Result<Fiel
                 }
             }
         }
-        (DataType::Struct(_), _) => Err(DataFusionError::Plan(
-            "Only utf8 strings are valid as an indexed field in a struct".to_string(),
-        )),
-        (DataType::List(_), _) => Err(DataFusionError::Plan(
-            "Only ints are valid as an indexed field in a list".to_string(),
-        )),
+        (DataType::Struct(_), key) => Err(DataFusionError::Plan(format!(
+            "Only utf8 strings are valid as an indexed field in a struct, actual: {}",
+            key
+        ))),
         _ => Err(DataFusionError::Plan(
-            "The expression to get an indexed field is only valid for `List` types"
+            "The expression to get an indexed field is only valid for `List` and `Struct` types"
                 .to_string(),
         )),
     }

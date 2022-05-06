@@ -596,12 +596,92 @@ async fn query_nested_get_indexed_field() -> Result<()> {
         "+----------+",
     ];
     assert_batches_eq!(expected, &actual);
+
+    // nested with scalar values
     let sql = "SELECT some_list[0][0] as i0 FROM ints LIMIT 3";
     let actual = execute_to_batches(&ctx, sql).await;
     let expected = vec![
         "+----+", "| i0 |", "+----+", "| 0  |", "| 5  |", "| 11 |", "+----+",
     ];
     assert_batches_eq!(expected, &actual);
+
+    // nested with dynamic expr in key
+    assert_batches_eq!(expected, &actual);
+    let sql = "SELECT some_list[1 - 1][1 - 1] as i0 FROM ints LIMIT 3";
+    let actual = execute_to_batches(&ctx, sql).await;
+    let expected = vec![
+        "+----+", "| i0 |", "+----+", "| 0  |", "| 5  |", "| 11 |", "+----+",
+    ];
+    assert_batches_eq!(expected, &actual);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn query_get_indexed_array_dynamic_key() -> Result<()> {
+    let ctx = SessionContext::new();
+
+    let list_dt = Box::new(Field::new("item", DataType::Int64, true));
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("arr", DataType::List(list_dt), false),
+        Field::new("key", DataType::Int64, false),
+    ]));
+
+    let array_ints_builder = PrimitiveBuilder::<Int64Type>::new(3);
+    let mut arr_builder = ListBuilder::new(array_ints_builder);
+    let mut key_builder = PrimitiveBuilder::<Int64Type>::new(3);
+
+    for (int_vec, key) in vec![
+        (vec![0, 1, 2, 3], 1),
+        (vec![4, 5, 6, 7], 2),
+        (vec![8, 9, 10, 11], 3),
+    ] {
+        for n in int_vec {
+            arr_builder.values().append_value(n)?;
+        }
+
+        key_builder.append_value(key)?;
+        arr_builder.append(true)?;
+    }
+
+    let data = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(arr_builder.finish()),
+            Arc::new(key_builder.finish()),
+        ],
+    )?;
+    let table = MemTable::try_new(schema, vec![vec![data]])?;
+    let table_a = Arc::new(table);
+
+    ctx.register_table("array_and_keys", table_a)?;
+
+    let sql = "SELECT arr[key], key FROM array_and_keys";
+    let actual = execute_to_batches(&ctx, sql).await;
+    let expected = vec![
+        "+----------------------------------------+-----+",
+        "| array_and_keys.arr[array_and_keys.key] | key |",
+        "+----------------------------------------+-----+",
+        "| 0                                      | 1   |",
+        "| 4                                      | 2   |",
+        "| 8                                      | 3   |",
+        "+----------------------------------------+-----+",
+    ];
+    assert_batches_eq!(expected, &actual);
+
+    // All dynamic
+    let sql = "SELECT r.value[r.key] FROM (SELECT array[1,2,3] as value, 1 as key UNION ALL SELECT array[4,5,6] as value, 2 as key) as r";
+    let actual = execute_to_batches(&ctx, sql).await;
+    let expected = vec![
+        "+----------------+",
+        "| r.value[r.key] |",
+        "+----------------+",
+        "| 1              |",
+        "| 5              |",
+        "+----------------+",
+    ];
+    assert_batches_eq!(expected, &actual);
+
     Ok(())
 }
 
@@ -634,7 +714,7 @@ async fn query_nested_get_indexed_field_on_struct() -> Result<()> {
     ctx.register_table("structs", table_a)?;
 
     // Original column is micros, convert to millis and check timestamp
-    let sql = "SELECT some_struct[\"bar\"] as l0 FROM structs LIMIT 3";
+    let sql = "SELECT some_struct['bar'] as l0 FROM structs LIMIT 3";
     let actual = execute_to_batches(&ctx, sql).await;
     let expected = vec![
         "+----------------+",
@@ -661,7 +741,7 @@ async fn query_nested_get_indexed_field_on_struct() -> Result<()> {
     ];
     assert_batches_eq!(expected, &actual);
 
-    let sql = "SELECT some_struct[\"bar\"][0] as i0 FROM structs LIMIT 3";
+    let sql = "SELECT some_struct['bar'][0] as i0 FROM structs LIMIT 3";
     let actual = execute_to_batches(&ctx, sql).await;
     let expected = vec![
         "+----+", "| i0 |", "+----+", "| 0  |", "| 4  |", "| 8  |", "+----+",

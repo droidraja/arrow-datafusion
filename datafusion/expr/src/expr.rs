@@ -114,7 +114,7 @@ pub enum Expr {
         /// the expression to take the field from
         expr: Box<Expr>,
         /// The name of the field to take
-        key: ScalarValue,
+        key: Box<Expr>,
     },
     /// Whether an expression is between a given range.
     Between {

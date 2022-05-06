@@ -312,8 +312,10 @@ pub fn expr_sub_expressions(expr: &Expr) -> Result<Vec<Expr>> {
         | Expr::Alias(expr, ..)
         | Expr::Not(expr)
         | Expr::Negative(expr)
-        | Expr::Sort { expr, .. }
-        | Expr::GetIndexedField { expr, .. } => Ok(vec![expr.as_ref().to_owned()]),
+        | Expr::Sort { expr, .. } => Ok(vec![expr.as_ref().to_owned()]),
+        Expr::GetIndexedField { expr, key } => {
+            Ok(vec![expr.as_ref().to_owned(), key.as_ref().to_owned()])
+        }
         Expr::ScalarFunction { args, .. }
         | Expr::ScalarUDF { args, .. }
         | Expr::TableUDF { args, .. }
@@ -547,9 +549,9 @@ pub fn rewrite_expression(expr: &Expr, expressions: &[Expr]) -> Result<Expr> {
             "QualifiedWildcard expressions are not valid in a logical query plan"
                 .to_owned(),
         )),
-        Expr::GetIndexedField { expr: _, key } => Ok(Expr::GetIndexedField {
+        Expr::GetIndexedField { .. } => Ok(Expr::GetIndexedField {
             expr: Box::new(expressions[0].clone()),
-            key: key.clone(),
+            key: Box::new(expressions[1].clone()),
         }),
     }
 }
