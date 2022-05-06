@@ -228,7 +228,7 @@ impl ExprRewritable for Expr {
             }
             Expr::GetIndexedField { expr, key } => Expr::GetIndexedField {
                 expr: rewrite_boxed(expr, rewriter)?,
-                key,
+                key: rewrite_boxed(key, rewriter)?,
             },
         };
 

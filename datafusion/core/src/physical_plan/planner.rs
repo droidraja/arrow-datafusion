@@ -156,6 +156,7 @@ fn create_physical_name(e: &Expr, is_first_expr: bool) -> Result<String> {
         }
         Expr::GetIndexedField { expr, key } => {
             let expr = create_physical_name(expr, false)?;
+            let key = create_physical_name(key, false)?;
             Ok(format!("{}[{}]", expr, key))
         }
         Expr::ScalarFunction { fun, args, .. } => {
@@ -1093,7 +1094,7 @@ pub fn create_physical_expr(
         )?),
         Expr::GetIndexedField { expr, key } => Ok(Arc::new(GetIndexedFieldExpr::new(
             create_physical_expr(expr, input_dfschema, input_schema, execution_props)?,
-            key.clone(),
+            create_physical_expr(key, input_dfschema, input_schema, execution_props)?,
         ))),
 
         Expr::ScalarFunction { fun, args } => {

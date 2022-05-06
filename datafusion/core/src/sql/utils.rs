@@ -391,7 +391,7 @@ where
             Expr::QualifiedWildcard { .. } => Ok(expr.clone()),
             Expr::GetIndexedField { expr, key } => Ok(Expr::GetIndexedField {
                 expr: Box::new(clone_with_replacement(expr.as_ref(), replacement_fn)?),
-                key: key.clone(),
+                key: Box::new(clone_with_replacement(key.as_ref(), replacement_fn)?),
             }),
         },
     }

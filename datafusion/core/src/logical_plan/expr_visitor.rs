@@ -101,8 +101,11 @@ impl ExprVisitable for Expr {
             | Expr::Negative(expr)
             | Expr::Cast { expr, .. }
             | Expr::TryCast { expr, .. }
-            | Expr::Sort { expr, .. }
-            | Expr::GetIndexedField { expr, .. } => expr.accept(visitor),
+            | Expr::Sort { expr, .. } => expr.accept(visitor),
+            Expr::GetIndexedField { expr, key } => {
+                let visitor = expr.accept(visitor)?;
+                key.accept(visitor)
+            }
             Expr::Column(_)
             | Expr::OuterColumn(_, _)
             | Expr::ScalarVariable(_, _)
