@@ -538,6 +538,7 @@ fn eq_coercion(lhs_type: &DataType, rhs_type: &DataType) -> Option<DataType> {
     numerical_coercion(lhs_type, rhs_type)
         .or_else(|| dictionary_coercion(lhs_type, rhs_type))
         .or_else(|| temporal_coercion(lhs_type, rhs_type))
+        .or_else(|| null_coercion(lhs_type, rhs_type))
 }
 
 /// Coercion rule for interval
@@ -552,6 +553,28 @@ pub fn interval_coercion(lhs_type: &DataType, rhs_type: &DataType) -> Option<Dat
         }
         (Interval(_), Timestamp(unit, zone)) => {
             Some(Timestamp(unit.clone(), zone.clone()))
+        }
+        _ => None,
+    }
+}
+
+/// coercion rules from NULL type. Since NULL can be casted to most of types in arrow,
+/// either lhs or rhs is NULL, if NULL can be casted to type of the other side, the coecion is valid.
+fn null_coercion(lhs_type: &DataType, rhs_type: &DataType) -> Option<DataType> {
+    match (lhs_type, rhs_type) {
+        (DataType::Null, _) => {
+            if can_cast_types(&DataType::Null, rhs_type) {
+                Some(rhs_type.clone())
+            } else {
+                None
+            }
+        }
+        (_, DataType::Null) => {
+            if can_cast_types(&DataType::Null, lhs_type) {
+                Some(lhs_type.clone())
+            } else {
+                None
+            }
         }
         _ => None,
     }
