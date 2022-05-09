@@ -103,6 +103,7 @@ impl ExpressionVisitor for ApplicabilityVisitor<'_> {
             | Expr::InList { .. }
             | Expr::InSubquery { .. }
             | Expr::GetIndexedField { .. }
+            | Expr::GroupingSet(_)
             | Expr::Case { .. } => Recursion::Continue(self),
 
             Expr::ScalarFunction { fun, .. } => self.visit_volatility(fun.volatility()),

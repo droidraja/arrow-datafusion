@@ -52,6 +52,12 @@ use datafusion_expr::{window_function::WindowFunction, BuiltinScalarFunction};
 use hashbrown::HashMap;
 use log::warn;
 
+<<<<<<< HEAD
+=======
+use datafusion_common::field_not_found;
+use datafusion_expr::expr::GroupingSet;
+use datafusion_expr::logical_plan::{Filter, Subquery};
+>>>>>>> 1fe038fbc (Add SQL planner support for `ROLLUP` and `CUBE` grouping set expressions (#2446))
 use sqlparser::ast::{
     ArrayAgg, BinaryOperator, DataType as SQLDataType, DateTimeField, Expr as SQLExpr,
     Fetch, FunctionArg, FunctionArgExpr, Ident, Join, JoinConstraint, JoinOperator,
@@ -1262,11 +1268,44 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
         group_by_exprs: Vec<Expr>,
         aggr_exprs: Vec<Expr>,
     ) -> Result<(LogicalPlan, Vec<Expr>, Option<Expr>)> {
+<<<<<<< HEAD
         let aggr_projection_exprs = group_by_exprs
             .iter()
             .chain(aggr_exprs.iter())
             .cloned()
             .collect::<Vec<Expr>>();
+=======
+        // create the aggregate plan
+        let plan = LogicalPlanBuilder::from(input.clone())
+            .aggregate(group_by_exprs.clone(), aggr_exprs.clone())?
+            .build()?;
+
+        // in this next section of code we are re-writing the projection to refer to columns
+        // output by the aggregate plan. For example, if the projection contains the expression
+        // `SUM(a)` then we replace that with a reference to a column `#SUM(a)` produced by
+        // the aggregate plan.
+
+        // combine the original grouping and aggregate expressions into one list (note that
+        // we do not add the "having" expression since that is not part of the projection)
+        let mut aggr_projection_exprs = vec![];
+        for expr in &group_by_exprs {
+            match expr {
+                Expr::GroupingSet(GroupingSet::Rollup(exprs)) => {
+                    aggr_projection_exprs.extend_from_slice(exprs)
+                }
+                Expr::GroupingSet(GroupingSet::Cube(exprs)) => {
+                    aggr_projection_exprs.extend_from_slice(exprs)
+                }
+                Expr::GroupingSet(GroupingSet::GroupingSets(lists_of_exprs)) => {
+                    for exprs in lists_of_exprs {
+                        aggr_projection_exprs.extend_from_slice(exprs)
+                    }
+                }
+                _ => aggr_projection_exprs.push(expr.clone()),
+            }
+        }
+        aggr_projection_exprs.extend_from_slice(&aggr_exprs);
+>>>>>>> 1fe038fbc (Add SQL planner support for `ROLLUP` and `CUBE` grouping set expressions (#2446))
 
         let plan = LogicalPlanBuilder::from(input.clone())
             .aggregate(group_by_exprs, aggr_exprs)?
@@ -2217,10 +2256,18 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                     function.name.0[0].clone().value.to_ascii_lowercase()
                 };
 
-                // first, scalar built-in
+                // first, check SQL reserved words
+                if name == "rollup" {
+                    let args = self.function_args_to_expr(function.args, schema)?;
+                    return Ok(Expr::GroupingSet(GroupingSet::Rollup(args)));
+                } else if name == "cube" {
+                    let args = self.function_args_to_expr(function.args, schema)?;
+                    return Ok(Expr::GroupingSet(GroupingSet::Cube(args)));
+                }
+
+                // next, scalar built-in
                 if let Ok(fun) = BuiltinScalarFunction::from_str(&name) {
                     let args = self.function_args_to_expr(function.args, schema)?;
-
                     return Ok(Expr::ScalarFunction { fun, args });
                 };
 
@@ -5233,6 +5280,7 @@ mod tests {
         quick_test(sql, expected);
     }
 
+<<<<<<< HEAD
     #[test]
     fn test_offset_after_limit() {
         let sql = "select id from person where person.id > 100 LIMIT 5 OFFSET 3;";
@@ -5291,5 +5339,45 @@ mod tests {
         \n          Filter: #person.id < Int64(100)\
         \n            TableScan: person projection=None";
         quick_test(sql, expected);
+=======
+    #[tokio::test]
+    async fn aggregate_with_rollup() {
+        let sql = "SELECT id, state, age, COUNT(*) FROM person GROUP BY id, ROLLUP (state, age)";
+        let expected = "Projection: #person.id, #person.state, #person.age, #COUNT(UInt8(1))\
+        \n  Aggregate: groupBy=[[#person.id, ROLLUP (#person.state, #person.age)]], aggr=[[COUNT(UInt8(1))]]\
+        \n    TableScan: person projection=None";
+        quick_test(sql, expected);
+    }
+
+    #[tokio::test]
+    async fn aggregate_with_cube() {
+        let sql =
+            "SELECT id, state, age, COUNT(*) FROM person GROUP BY id, CUBE (state, age)";
+        let expected = "Projection: #person.id, #person.state, #person.age, #COUNT(UInt8(1))\
+        \n  Aggregate: groupBy=[[#person.id, CUBE (#person.state, #person.age)]], aggr=[[COUNT(UInt8(1))]]\
+        \n    TableScan: person projection=None";
+        quick_test(sql, expected);
+    }
+
+    #[ignore] // see https://github.com/apache/arrow-datafusion/issues/2469
+    #[tokio::test]
+    async fn aggregate_with_grouping_sets() {
+        let sql = "SELECT id, state, age, COUNT(*) FROM person GROUP BY id, GROUPING SETS ((state), (state, age), (id, state))";
+        let expected = "TBD";
+        quick_test(sql, expected);
+    }
+
+    fn assert_field_not_found(err: DataFusionError, name: &str) {
+        match err {
+            DataFusionError::SchemaError { .. } => {
+                let msg = format!("{}", err);
+                let expected = format!("Schema error: No field named '{}'.", name);
+                if !msg.starts_with(&expected) {
+                    panic!("error [{}] did not start with [{}]", msg, expected);
+                }
+            }
+            _ => panic!("assert_field_not_found wrong error type"),
+        }
+>>>>>>> 1fe038fbc (Add SQL planner support for `ROLLUP` and `CUBE` grouping set expressions (#2446))
     }
 }
