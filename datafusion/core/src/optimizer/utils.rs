@@ -27,7 +27,7 @@ use crate::logical_plan::plan::{
 use crate::logical_plan::builder::build_table_udf_schema;
 use crate::logical_plan::{
     build_join_schema, Column, CreateMemoryTable, DFSchemaRef, Expr, ExprVisitable,
-    Limit, LogicalPlan, LogicalPlanBuilder, Operator, Partitioning, Recursion,
+    Limit, LogicalPlan, LogicalPlanBuilder, Offset, Operator, Partitioning, Recursion,
     Repartition, Union, Values,
 };
 use crate::prelude::lit;
@@ -245,6 +245,10 @@ pub fn from_plan(
         }
         LogicalPlan::Limit(Limit { n, .. }) => Ok(LogicalPlan::Limit(Limit {
             n: *n,
+            input: Arc::new(inputs[0].clone()),
+        })),
+        LogicalPlan::Offset(Offset { offset, .. }) => Ok(LogicalPlan::Offset(Offset {
+            offset: *offset,
             input: Arc::new(inputs[0].clone()),
         })),
         LogicalPlan::CreateMemoryTable(CreateMemoryTable { name, .. }) => {

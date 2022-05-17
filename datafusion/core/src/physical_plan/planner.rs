@@ -859,6 +859,11 @@ impl DefaultPhysicalPlanner {
                     let input = self.create_initial_plan(input, &new_session_state).await?;
                     Ok(Arc::new(SubqueryExec::try_new(subqueries, input, cursor)?))
                 }
+                LogicalPlan::Offset(_) => {
+                    Err(DataFusionError::Internal(
+                        "Unsupported logical plan: OFFSET".to_string(),
+                    ))
+                }
                 LogicalPlan::CreateExternalTable(_) => {
                     // There is no default plan for "CREATE EXTERNAL
                     // TABLE" -- it must be handled at a higher level (so

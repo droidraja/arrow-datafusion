@@ -32,7 +32,10 @@ use crate::{
         },
         MemTable,
     },
-    logical_plan::{PlanType, ToStringifiedPlan},
+    logical_plan::{
+        plan::{CreateCatalogSchema, CreateExternalTable},
+        PlanType, ToStringifiedPlan,
+    },
     optimizer::eliminate_filter::EliminateFilter,
     optimizer::eliminate_limit::EliminateLimit,
     physical_optimizer::{
@@ -58,8 +61,8 @@ use crate::datasource::listing::ListingTableConfig;
 use crate::datasource::TableProvider;
 use crate::error::{DataFusionError, Result};
 use crate::logical_plan::{
-    CreateCatalogSchema, CreateExternalTable, CreateMemoryTable, DropTable,
-    FunctionRegistry, LogicalPlan, LogicalPlanBuilder, UNNAMED_TABLE,
+    CreateMemoryTable, DropTable, FunctionRegistry, LogicalPlan, LogicalPlanBuilder,
+    UNNAMED_TABLE,
 };
 use crate::optimizer::common_subexpr_eliminate::CommonSubexprEliminate;
 use crate::optimizer::filter_push_down::FilterPushDown;
