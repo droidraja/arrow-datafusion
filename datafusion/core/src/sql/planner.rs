@@ -2537,9 +2537,14 @@ fn extract_possible_join_keys(
 pub fn convert_data_type(sql_type: &SQLDataType) -> Result<DataType> {
     match sql_type {
         SQLDataType::Boolean => Ok(DataType::Boolean),
+        SQLDataType::TinyInt(_) => Ok(DataType::Int8),
+        SQLDataType::UnsignedTinyInt(_) => Ok(DataType::UInt8),
         SQLDataType::SmallInt(_) => Ok(DataType::Int16),
+        SQLDataType::UnsignedSmallInt(_) => Ok(DataType::UInt16),
         SQLDataType::Int(_) => Ok(DataType::Int32),
+        SQLDataType::UnsignedInt(_) => Ok(DataType::UInt32),
         SQLDataType::BigInt(_) => Ok(DataType::Int64),
+        SQLDataType::UnsignedBigInt(_) => Ok(DataType::UInt64),
         SQLDataType::Float(_) => Ok(DataType::Float32),
         SQLDataType::Real => Ok(DataType::Float32),
         SQLDataType::Double => Ok(DataType::Float64),
