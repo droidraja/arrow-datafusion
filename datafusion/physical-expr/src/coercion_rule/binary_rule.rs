@@ -85,12 +85,14 @@ pub(crate) fn coerce_types(
 fn bitwise_coercion(left_type: &DataType, right_type: &DataType) -> Option<DataType> {
     use arrow::datatypes::DataType::*;
 
-    if !is_numeric(left_type) || !is_numeric(right_type) {
+    if !both_numeric_or_null_and_numeric(left_type, right_type) {
         return None;
     }
+
     if left_type == right_type && !is_dictionary(left_type) {
         return Some(left_type.clone());
     }
+
     // TODO support other data type
     match (left_type, right_type) {
         (Int64, _) | (_, Int64) => Some(Int64),
@@ -215,7 +217,7 @@ fn mathematics_numerical_coercion(
     use arrow::datatypes::DataType::*;
 
     // error on any non-numeric type
-    if !is_numeric(lhs_type) || !is_numeric(rhs_type) {
+    if !both_numeric_or_null_and_numeric(lhs_type, rhs_type) {
         return None;
     };
 
@@ -343,6 +345,15 @@ pub fn is_numeric(dt: &DataType) -> bool {
             }
             _ => false,
         }
+}
+
+/// Determine if at least of one of lhs and rhs is numeric, and the other must be NULL or numeric
+fn both_numeric_or_null_and_numeric(lhs_type: &DataType, rhs_type: &DataType) -> bool {
+    match (lhs_type, rhs_type) {
+        (_, DataType::Null) => is_numeric(lhs_type),
+        (DataType::Null, _) => is_numeric(rhs_type),
+        _ => is_numeric(lhs_type) && is_numeric(rhs_type),
+    }
 }
 
 /// Coercion rules for dictionary values (aka the type of the  dictionary itself)
