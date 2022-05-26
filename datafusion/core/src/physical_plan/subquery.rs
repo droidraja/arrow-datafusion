@@ -22,6 +22,7 @@
 
 use arrow::compute::concat;
 use std::any::Any;
+use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -61,16 +62,14 @@ impl SubqueryExec {
         input: Arc<dyn ExecutionPlan>,
         cursor: Arc<OuterQueryCursor>,
     ) -> Result<Self> {
-        let input_schema = (*input.schema()).clone();
+        let input_schema = input.schema();
 
-        let merged_schema = Schema::try_merge(
-            vec![input_schema].into_iter().chain(
-                subqueries
-                    .iter()
-                    .map(|s| (*s.schema()).clone())
-                    .collect::<Vec<_>>(),
-            ),
-        )?;
+        let mut total_fields = input_schema.fields().clone();
+        for q in subqueries.iter() {
+            total_fields.append(&mut q.schema().fields().clone());
+        }
+
+        let merged_schema = Schema::new_with_metadata(total_fields, HashMap::new());
 
         if merged_schema.fields().len()
             != input.schema().fields().len() + subqueries.len()

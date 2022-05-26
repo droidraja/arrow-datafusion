@@ -2061,7 +2061,9 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
 
             SQLExpr::Subquery(q) => {
                 let with_outer_query_context = self.with_context(|c| c.outer_query_context_schema.push(Arc::new(schema.clone())));
-                let plan = with_outer_query_context.query_to_plan(*q)?;
+                let alias_name = format!("subquery-{}", self.context.subqueries_plans().unwrap_or_default().unwrap_or_default().len());
+                let plan = with_outer_query_context.query_to_plan_with_alias(*q, Some(alias_name), &mut HashMap::new())?;
+
                 let fields = plan.schema().fields();
                 if fields.len() != 1 {
                     return Err(DataFusionError::Plan(format!("Correlated sub query requires only one column in result set but found: {:?}", fields)));
