@@ -677,6 +677,8 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                 ..
             } => {
                 let table_name = name.to_string();
+                let default_table_alias =
+                    name.0.iter().last().map(|i| i.value.to_string()).unwrap();
                 let cte = ctes.get(&table_name);
                 (
                     match (
@@ -689,7 +691,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                             alias
                                 .as_ref()
                                 .map(|a| a.name.value.as_str())
-                                .unwrap_or(&table_name),
+                                .unwrap_or(&default_table_alias),
                             provider,
                             None,
                         )?
