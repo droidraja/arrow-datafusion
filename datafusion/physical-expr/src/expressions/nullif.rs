@@ -72,11 +72,6 @@ macro_rules! primitive_bool_array_op {
 ///       1 - if the left is equal to this expr2, then the result is NULL, otherwise left value is passed.
 ///
 pub fn nullif_func(args: &[ColumnarValue]) -> Result<ColumnarValue> {
-    let str_res = nullif_func_str(args);
-    if let Ok(_) = str_res {
-        return str_res;
-    }
-
     if args.len() != 2 {
         return Err(DataFusionError::Internal(format!(
             "{:?} args were supplied but NULLIF takes exactly two args",
@@ -85,6 +80,11 @@ pub fn nullif_func(args: &[ColumnarValue]) -> Result<ColumnarValue> {
     }
 
     let (lhs, rhs) = (&args[0], &args[1]);
+
+    match lhs.data_type() {
+        DataType::Utf8 | DataType::LargeUtf8 => return nullif_func_str(args),
+        _ => (),
+    }
 
     match (lhs, rhs) {
         (ColumnarValue::Array(lhs), ColumnarValue::Scalar(rhs)) => {
