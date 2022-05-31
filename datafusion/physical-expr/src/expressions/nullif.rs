@@ -25,6 +25,7 @@ use arrow::compute::kernels::comparison::{
     eq, eq_bool, eq_bool_scalar, eq_scalar, eq_utf8, eq_utf8_scalar,
 };
 use arrow::datatypes::{DataType, TimeUnit};
+use cube_ext::nullif_func_str;
 use datafusion_common::ScalarValue;
 use datafusion_common::{DataFusionError, Result};
 use datafusion_expr::ColumnarValue;
@@ -80,6 +81,11 @@ pub fn nullif_func(args: &[ColumnarValue]) -> Result<ColumnarValue> {
 
     let (lhs, rhs) = (&args[0], &args[1]);
 
+    match lhs.data_type() {
+        DataType::Utf8 | DataType::LargeUtf8 => return nullif_func_str(args),
+        _ => (),
+    }
+
     match (lhs, rhs) {
         (ColumnarValue::Array(lhs), ColumnarValue::Scalar(rhs)) => {
             let cond_array = binary_array_op_scalar!(lhs, rhs.clone(), eq).unwrap()?;
@@ -117,6 +123,8 @@ pub static SUPPORTED_NULLIF_TYPES: &[DataType] = &[
     DataType::Int64,
     DataType::Float32,
     DataType::Float64,
+    DataType::Utf8,
+    DataType::LargeUtf8,
 ];
 
 #[cfg(test)]
