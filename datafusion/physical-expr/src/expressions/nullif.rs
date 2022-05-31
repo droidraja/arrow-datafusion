@@ -25,6 +25,7 @@ use arrow::compute::kernels::comparison::{
     eq, eq_bool, eq_bool_scalar, eq_scalar, eq_utf8, eq_utf8_scalar,
 };
 use arrow::datatypes::{DataType, TimeUnit};
+use cube_ext::nullif_func_str;
 use datafusion_common::ScalarValue;
 use datafusion_common::{DataFusionError, Result};
 use datafusion_expr::ColumnarValue;
@@ -71,6 +72,11 @@ macro_rules! primitive_bool_array_op {
 ///       1 - if the left is equal to this expr2, then the result is NULL, otherwise left value is passed.
 ///
 pub fn nullif_func(args: &[ColumnarValue]) -> Result<ColumnarValue> {
+    let str_res = nullif_func_str(args);
+    if let Ok(_) = str_res {
+        return str_res;
+    }
+
     if args.len() != 2 {
         return Err(DataFusionError::Internal(format!(
             "{:?} args were supplied but NULLIF takes exactly two args",
@@ -117,6 +123,8 @@ pub static SUPPORTED_NULLIF_TYPES: &[DataType] = &[
     DataType::Int64,
     DataType::Float32,
     DataType::Float64,
+    DataType::Utf8,
+    DataType::LargeUtf8,
 ];
 
 #[cfg(test)]
