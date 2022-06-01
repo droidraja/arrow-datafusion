@@ -339,10 +339,12 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
 
         let plan = self.order_by(plan, query.order_by)?;
 
-        let plan: LogicalPlan = self.limit(plan, query.limit)?;
-
-        //make limit as offset's input will enable limit push down simply
-        self.offset(plan, query.offset)
+        // Offset is the parent of Limit.
+        // If both OFFSET and LIMIT appear,
+        // then OFFSET rows are skipped before starting to count the LIMIT rows that are returned.
+        // see https://www.postgresql.org/docs/current/queries-limit.html
+        let plan = self.offset(plan, query.offset)?;
+        self.limit(plan, query.limit)
     }
 
     fn set_expr_to_plan(
@@ -4652,8 +4654,8 @@ mod tests {
     #[test]
     fn test_zero_offset_with_limit() {
         let sql = "select id from person where person.id > 100 LIMIT 5 OFFSET 0;";
-        let expected = "Offset: 0\
-                                    \n  Limit: 5\
+        let expected = "Limit: 5\
+                                    \n  Offset: 0\
                                     \n    Projection: #person.id\
                                     \n      Filter: #person.id > Int64(100)\
                                     \n        TableScan: person projection=None";
