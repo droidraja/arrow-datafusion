@@ -19,7 +19,6 @@
 //! loaded into memory
 
 use crate::error::{DataFusionError, Result};
-use crate::execution::context::ExecutionProps;
 use crate::logical_plan::plan::{
     Aggregate, Analyze, Join, Projection, Subquery, TableScan, Window,
 };
@@ -27,6 +26,7 @@ use crate::logical_plan::{
     build_join_schema, Column, DFField, DFSchema, DFSchemaRef, LogicalPlan,
     LogicalPlanBuilder, ToDFSchema, Union,
 };
+use crate::optimizer::optimizer::OptimizerConfig;
 use crate::optimizer::optimizer::OptimizerRule;
 use crate::optimizer::utils;
 use crate::sql::utils::find_sort_exprs;
@@ -46,7 +46,7 @@ impl OptimizerRule for ProjectionPushDown {
     fn optimize(
         &self,
         plan: &LogicalPlan,
-        execution_props: &ExecutionProps,
+        optimizer_config: &OptimizerConfig,
     ) -> Result<LogicalPlan> {
         // set of all columns refered by the plan (and thus considered required by the root)
         let required_columns = plan
@@ -55,7 +55,7 @@ impl OptimizerRule for ProjectionPushDown {
             .iter()
             .map(|f| f.qualified_column())
             .collect::<HashSet<Column>>();
-        optimize_plan(self, plan, &required_columns, false, execution_props)
+        optimize_plan(self, plan, &required_columns, false, optimizer_config)
     }
 
     fn name(&self) -> &str {
@@ -130,7 +130,7 @@ fn optimize_plan(
     plan: &LogicalPlan,
     required_columns: &HashSet<Column>, // set of columns required up to this step
     has_projection: bool,
-    execution_props: &ExecutionProps,
+    _optimizer_config: &OptimizerConfig,
 ) -> Result<LogicalPlan> {
     let mut new_required_columns = required_columns.clone();
     match plan {
@@ -169,7 +169,7 @@ fn optimize_plan(
                 input,
                 &new_required_columns,
                 true,
-                execution_props,
+                _optimizer_config,
             )?;
 
             let new_required_columns_optimized = new_input
@@ -223,7 +223,7 @@ fn optimize_plan(
                 left,
                 &new_required_columns,
                 true,
-                execution_props,
+                _optimizer_config,
             )?);
 
             let optimized_right = Arc::new(optimize_plan(
@@ -231,7 +231,7 @@ fn optimize_plan(
                 right,
                 &new_required_columns,
                 true,
-                execution_props,
+                _optimizer_config,
             )?);
 
             let schema = build_join_schema(
@@ -273,6 +273,18 @@ fn optimize_plan(
                 })?;
             }
 
+            // none columns in window expr are needed, remove the window expr
+            if new_window_expr.is_empty() {
+                return LogicalPlanBuilder::from(optimize_plan(
+                    optimizer,
+                    input,
+                    required_columns,
+                    true,
+                    _optimizer_config,
+                )?)
+                .build();
+            };
+
             // for all the retained window expr, find their sort expressions if any, and retain these
             utils::exprlist_to_columns(
                 &find_sort_exprs(&new_window_expr),
@@ -284,7 +296,7 @@ fn optimize_plan(
                 input,
                 &new_required_columns,
                 true,
-                execution_props,
+                _optimizer_config,
             )?)
             .window(new_window_expr)?
             .build()
@@ -336,7 +348,7 @@ fn optimize_plan(
                     input,
                     &new_required_columns,
                     true,
-                    execution_props,
+                    _optimizer_config,
                 )?),
                 schema: DFSchemaRef::new(new_schema),
             }))
@@ -385,7 +397,7 @@ fn optimize_plan(
                     &a.input,
                     &required_columns,
                     false,
-                    execution_props,
+                    _optimizer_config,
                 )?),
                 verbose: a.verbose,
                 schema: a.schema.clone(),
@@ -421,7 +433,7 @@ fn optimize_plan(
                         input_plan,
                         &new_required_columns,
                         has_projection,
-                        execution_props,
+                        _optimizer_config,
                     )
                 })
                 .collect::<Result<Vec<_>>>()?;
@@ -470,7 +482,7 @@ fn optimize_plan(
                 input,
                 &new_required_columns,
                 has_projection,
-                execution_props,
+                _optimizer_config,
             )?;
             let new_schema = Subquery::merged_schema(&input, subqueries);
             Ok(LogicalPlan::Subquery(Subquery {
@@ -509,7 +521,7 @@ fn optimize_plan(
                         input_plan,
                         &new_required_columns,
                         has_projection,
-                        execution_props,
+                        _optimizer_config,
                     )
                 })
                 .collect::<Result<Vec<_>>>()?;
@@ -983,6 +995,6 @@ mod tests {
 
     fn optimize(plan: &LogicalPlan) -> Result<LogicalPlan> {
         let rule = ProjectionPushDown::new();
-        rule.optimize(plan, &ExecutionProps::new())
+        rule.optimize(plan, &OptimizerConfig::new())
     }
 }

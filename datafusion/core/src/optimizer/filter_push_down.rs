@@ -15,14 +15,13 @@
 //! Filter Push Down optimizer rule ensures that filters are applied as early as possible in the plan
 
 use crate::datasource::datasource::TableProviderFilterPushDown;
-use crate::execution::context::ExecutionProps;
 use crate::logical_plan::plan::{Aggregate, Filter, Join, Projection, Union};
 use crate::logical_plan::{
     and, col, replace_col, Column, CrossJoin, JoinType, Limit, LogicalPlan, TableScan,
 };
 use crate::logical_plan::{DFSchema, Expr};
-use crate::optimizer::optimizer::OptimizerRule;
-use crate::optimizer::utils;
+use crate::optimizer::optimizer::OptimizerConfig;
+use crate::optimizer::{optimizer::OptimizerRule, utils};
 use crate::{error::Result, logical_plan::Operator};
 use std::{
     collections::{HashMap, HashSet},
@@ -560,7 +559,7 @@ impl OptimizerRule for FilterPushDown {
         "filter_push_down"
     }
 
-    fn optimize(&self, plan: &LogicalPlan, _: &ExecutionProps) -> Result<LogicalPlan> {
+    fn optimize(&self, plan: &LogicalPlan, _: &OptimizerConfig) -> Result<LogicalPlan> {
         optimize(plan, State::default())
     }
 }
@@ -605,7 +604,7 @@ mod tests {
 
     fn optimize_plan(plan: &LogicalPlan) -> LogicalPlan {
         let rule = FilterPushDown::new();
-        rule.optimize(plan, &ExecutionProps::new())
+        rule.optimize(plan, &OptimizerConfig::new())
             .expect("failed to optimize plan")
     }
 
