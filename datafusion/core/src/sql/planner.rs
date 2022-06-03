@@ -1536,6 +1536,8 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
             BinaryOperator::Or => Ok(Operator::Or),
             BinaryOperator::Like => Ok(Operator::Like),
             BinaryOperator::NotLike => Ok(Operator::NotLike),
+            BinaryOperator::ILike => Ok(Operator::ILike),
+            BinaryOperator::NotILike => Ok(Operator::NotILike),
             BinaryOperator::PGRegexMatch => Ok(Operator::RegexMatch),
             BinaryOperator::PGRegexIMatch => Ok(Operator::RegexIMatch),
             BinaryOperator::PGRegexNotMatch => Ok(Operator::RegexNotMatch),
@@ -3922,9 +3924,9 @@ mod tests {
     fn union_values_with_no_alias() {
         let sql = "SELECT 1, 2 UNION ALL SELECT 3, 4";
         let expected = "Union\
-            \n  Projection: Int64(1) AS column0, Int64(2) AS column1\
+            \n  Projection: Int64(1) AS Int64(1), Int64(2) AS Int64(2)\
             \n    EmptyRelation\
-            \n  Projection: Int64(3) AS column0, Int64(4) AS column1\
+            \n  Projection: Int64(3) AS Int64(1), Int64(4) AS Int64(2)\
             \n    EmptyRelation";
         quick_test(sql, expected);
     }
