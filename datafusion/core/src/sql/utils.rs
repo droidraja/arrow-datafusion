@@ -538,7 +538,7 @@ pub(crate) fn make_decimal_type(
     let scale = scale.unwrap_or(DECIMAL_DEFAULT_SCALE as u64) as usize;
     let precision = precision.unwrap_or((DECIMAL_MAX_PRECISION - scale) as u64) as usize;
     // Arrow decimal is i128 meaning 38 maximum decimal digits
-    if precision + scale > DECIMAL_MAX_PRECISION || scale > precision {
+    if precision > DECIMAL_MAX_PRECISION || scale > precision {
         return Err(DataFusionError::Internal(format!(
             "For decimal(precision, scale) precision + scale must be less than or equal to 38 and scale can't be greater than precision. Got ({}, {})",
             precision, scale
