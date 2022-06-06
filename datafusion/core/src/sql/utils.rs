@@ -545,7 +545,7 @@ pub(crate) fn make_decimal_type(
     // Arrow decimal is i128 meaning 38 maximum decimal digits
     if precision > DECIMAL_MAX_PRECISION || scale > precision {
         return Err(DataFusionError::Internal(format!(
-            "For decimal(precision, scale) precision + scale must be less than or equal to 38 and scale can't be greater than precision. Got ({}, {})",
+            "For decimal(precision, scale) precision must be less than or equal to 38 and scale can't be greater than precision. Got ({}, {})",
             precision, scale
         )));
     } else {
