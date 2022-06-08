@@ -1753,7 +1753,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                     Ok(Expr::ScalarVariable(ty, var_names))
                 } else {
                     match (var_names.pop(), var_names.pop()) {
-                        (Some(name), Some(relation)) if var_names.is_empty() => {
+                        (Some(name), Some(relation)) if var_names.is_empty() || (var_names.len() == 1 && var_names.pop().unwrap_or_default().to_lowercase() == "public") => {
                             if let Some(f) = self.context.outer_query_context_schema.iter().find_map(|s| s.field_with_qualified_name(&relation, &name).ok()) {
                                 return Ok(Expr::OuterColumn(f.data_type().clone(), Column {
                                     relation: Some(relation),
