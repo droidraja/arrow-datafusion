@@ -21,6 +21,10 @@ use std::collections::BTreeMap;
 use std::{env, error::Error, path::PathBuf, sync::Arc};
 
 use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
+use datafusion_common::DataFusionError;
+
+use crate::datasource::empty::EmptyTable;
+use crate::logical_plan::{LogicalPlanBuilder, UNNAMED_TABLE};
 
 /// Compares formatted output of a record batch with an expected
 /// vector of strings, with the result of pretty formatting record
@@ -230,6 +234,29 @@ fn get_data_dir(udf_env: &str, submodule_data: &str) -> Result<PathBuf, Box<dyn 
             pb.display(),
         ).into())
     }
+}
+
+/// Scan an empty data source, mainly used in tests
+pub fn scan_empty(
+    name: Option<&str>,
+    table_schema: &Schema,
+    projection: Option<Vec<usize>>,
+) -> Result<LogicalPlanBuilder, DataFusionError> {
+    let table_schema = Arc::new(table_schema.clone());
+    let provider = Arc::new(EmptyTable::new(table_schema));
+    LogicalPlanBuilder::scan(name.unwrap_or(UNNAMED_TABLE), provider, projection)
+}
+
+/// Scan an empty data source with configured partition, mainly used in tests.
+pub fn scan_empty_with_partitions(
+    name: Option<&str>,
+    table_schema: &Schema,
+    projection: Option<Vec<usize>>,
+    partitions: usize,
+) -> Result<LogicalPlanBuilder, DataFusionError> {
+    let table_schema = Arc::new(table_schema.clone());
+    let provider = Arc::new(EmptyTable::new(table_schema).with_partitions(partitions));
+    LogicalPlanBuilder::scan(name.unwrap_or(UNNAMED_TABLE), provider, projection)
 }
 
 /// Get the schema for the aggregate_test_* csv files

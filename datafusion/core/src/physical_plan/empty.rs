@@ -27,6 +27,7 @@ use crate::physical_plan::{
 use arrow::array::NullArray;
 use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
 use arrow::record_batch::RecordBatch;
+use log::debug;
 
 use super::expressions::PhysicalSortExpr;
 use super::{common, SendableRecordBatchStream, Statistics};
@@ -41,6 +42,8 @@ pub struct EmptyExec {
     produce_one_row: bool,
     /// The schema for the produced row
     schema: SchemaRef,
+    /// Number of partitions
+    partitions: usize,
 }
 
 impl EmptyExec {
@@ -49,7 +52,14 @@ impl EmptyExec {
         EmptyExec {
             produce_one_row,
             schema,
+            partitions: 1,
         }
+    }
+
+    /// Create a new EmptyExec with specified partition number
+    pub fn with_partitions(mut self, partitions: usize) -> Self {
+        self.partitions = partitions;
+        self
     }
 
     /// Specifies whether this exec produces a row or not
@@ -96,7 +106,7 @@ impl ExecutionPlan for EmptyExec {
 
     /// Get the output partitioning of this plan
     fn output_partitioning(&self) -> Partitioning {
-        Partitioning::UnknownPartitioning(1)
+        Partitioning::UnknownPartitioning(self.partitions)
     }
 
     fn output_ordering(&self) -> Option<&[PhysicalSortExpr]> {
@@ -116,13 +126,14 @@ impl ExecutionPlan for EmptyExec {
     async fn execute(
         &self,
         partition: usize,
-        _context: Arc<TaskContext>,
+        context: Arc<TaskContext>,
     ) -> Result<SendableRecordBatchStream> {
-        // GlobalLimitExec has a single output partition
-        if 0 != partition {
+        debug!("Start EmptyExec::execute for partition {} of context session_id {} and task_id {:?}", partition, context.session_id(), context.task_id());
+
+        if partition >= self.partitions {
             return Err(DataFusionError::Internal(format!(
-                "EmptyExec invalid partition {} (expected 0)",
-                partition
+                "EmptyExec invalid partition {} (expected less than {})",
+                partition, self.partitions
             )));
         }
 
@@ -223,6 +234,25 @@ mod tests {
 
         // should have one item
         assert_eq!(batches.len(), 1);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn produce_one_row_multiple_partition() -> Result<()> {
+        let session_ctx = SessionContext::new();
+        let task_ctx = session_ctx.task_ctx();
+        let schema = test_util::aggr_test_schema();
+        let partitions = 3;
+        let empty = EmptyExec::new(true, schema).with_partitions(partitions);
+
+        for n in 0..partitions {
+            let iter = empty.execute(n, task_ctx.clone()).await?;
+            let batches = common::collect(iter).await?;
+
+            // should have one item
+            assert_eq!(batches.len(), 1);
+        }
 
         Ok(())
     }

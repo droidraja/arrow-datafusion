@@ -128,8 +128,8 @@ pub struct TableScan {
     pub projected_schema: DFSchemaRef,
     /// Optional expressions to be used as filters by the table provider
     pub filters: Vec<Expr>,
-    /// Optional limit to skip reading
-    pub limit: Option<usize>,
+    /// Optional number of rows to read
+    pub fetch: Option<usize>,
 }
 
 /// Apply Cross Join to two logical plans
@@ -256,8 +256,10 @@ pub struct EmptyRelation {
 /// Produces the first `n` tuples from its input and discards the rest.
 #[derive(Clone)]
 pub struct Limit {
-    /// The limit
-    pub n: usize,
+    /// Number of rows to skip before fetch
+    pub skip: Option<usize>,
+    /// Maximum number of rows to fetch
+    pub fetch: Option<usize>,
     /// The logical plan
     pub input: Arc<LogicalPlan>,
 }
@@ -400,8 +402,6 @@ pub enum LogicalPlan {
     EmptyRelation(EmptyRelation),
     /// Produces the first `n` tuples from its input and discards the rest.
     Limit(Limit),
-    /// Adjusts the starting point at which the rest of the expressions begin to effect
-    Offset(Offset),
     /// Evaluates correlated sub queries
     Subquery(Subquery),
     /// Creates an external table.
@@ -447,7 +447,6 @@ impl LogicalPlan {
             LogicalPlan::CrossJoin(CrossJoin { schema, .. }) => schema,
             LogicalPlan::Repartition(Repartition { input, .. }) => input.schema(),
             LogicalPlan::Limit(Limit { input, .. }) => input.schema(),
-            LogicalPlan::Offset(Offset { input, .. }) => input.schema(),
             LogicalPlan::CreateExternalTable(CreateExternalTable { schema, .. }) => {
                 schema
             }
@@ -513,7 +512,6 @@ impl LogicalPlan {
             | LogicalPlan::Repartition(Repartition { input, .. })
             | LogicalPlan::Sort(Sort { input, .. })
             | LogicalPlan::CreateMemoryTable(CreateMemoryTable { input, .. })
-            | LogicalPlan::Offset(Offset { input, .. })
             | LogicalPlan::Filter(Filter { input, .. }) => input.all_schemas(),
             LogicalPlan::DropTable(_) => vec![],
         }
@@ -561,7 +559,6 @@ impl LogicalPlan {
             LogicalPlan::TableScan { .. }
             | LogicalPlan::EmptyRelation(_)
             | LogicalPlan::Limit(_)
-            | LogicalPlan::Offset(_)
             | LogicalPlan::CreateExternalTable(_)
             | LogicalPlan::CreateMemoryTable(_)
             | LogicalPlan::CreateCatalogSchema(_)
@@ -595,7 +592,6 @@ impl LogicalPlan {
             LogicalPlan::Join(Join { left, right, .. }) => vec![left, right],
             LogicalPlan::CrossJoin(CrossJoin { left, right, .. }) => vec![left, right],
             LogicalPlan::Limit(Limit { input, .. }) => vec![input],
-            LogicalPlan::Offset(Offset { input, .. }) => vec![input],
             LogicalPlan::Extension(extension) => extension.node.inputs(),
             LogicalPlan::Union(Union { inputs, .. }) => inputs.iter().collect(),
             LogicalPlan::Explain(explain) => vec![&explain.plan],
@@ -755,7 +751,6 @@ impl LogicalPlan {
                 true
             }
             LogicalPlan::Limit(Limit { input, .. }) => input.accept(visitor)?,
-            LogicalPlan::Offset(Offset { input, .. }) => input.accept(visitor)?,
             LogicalPlan::CreateMemoryTable(CreateMemoryTable { input, .. }) => {
                 input.accept(visitor)?
             }
@@ -987,7 +982,7 @@ impl LogicalPlan {
                         ref table_name,
                         ref projection,
                         ref filters,
-                        ref limit,
+                        ref fetch,
                         ..
                     }) => {
                         write!(
@@ -1032,8 +1027,8 @@ impl LogicalPlan {
                             }
                         }
 
-                        if let Some(n) = limit {
-                            write!(f, ", limit={}", n)?;
+                        if let Some(n) = fetch {
+                            write!(f, ", fetch={}", n)?;
                         }
 
                         Ok(())
@@ -1137,9 +1132,17 @@ impl LogicalPlan {
                             )
                         }
                     },
-                    LogicalPlan::Limit(Limit { ref n, .. }) => write!(f, "Limit: {}", n),
-                    LogicalPlan::Offset(Offset { ref offset, .. }) => {
-                        write!(f, "Offset: {}", offset)
+                    LogicalPlan::Limit(Limit {
+                        ref skip,
+                        ref fetch,
+                        ..
+                    }) => {
+                        write!(
+                            f,
+                            "Limit: skip={}, fetch={}",
+                            skip.map_or("None".to_string(), |x| x.to_string()),
+                            fetch.map_or_else(|| "None".to_string(), |x| x.to_string())
+                        )
                     }
                     LogicalPlan::CreateExternalTable(CreateExternalTable {
                         ref name,

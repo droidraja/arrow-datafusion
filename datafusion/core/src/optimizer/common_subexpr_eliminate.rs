@@ -242,7 +242,6 @@ fn optimize(
         | LogicalPlan::Values(_)
         | LogicalPlan::EmptyRelation(_)
         | LogicalPlan::Limit(_)
-        | LogicalPlan::Offset(_)
         | LogicalPlan::CreateExternalTable(_)
         | LogicalPlan::Explain { .. }
         | LogicalPlan::Analyze { .. }

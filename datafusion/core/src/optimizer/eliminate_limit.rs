@@ -42,12 +42,14 @@ impl OptimizerRule for EliminateLimit {
         optimizer_config: &OptimizerConfig,
     ) -> Result<LogicalPlan> {
         match plan {
-            LogicalPlan::Limit(Limit { n, input }) if *n == 0 => {
-                Ok(LogicalPlan::EmptyRelation(EmptyRelation {
-                    produce_one_row: false,
-                    schema: input.schema().clone(),
-                }))
-            }
+            LogicalPlan::Limit(Limit {
+                fetch: Some(0),
+                input,
+                ..
+            }) => Ok(LogicalPlan::EmptyRelation(EmptyRelation {
+                produce_one_row: false,
+                schema: input.schema().clone(),
+            })),
             // Rest: recurse and find possible LIMIT 0 nodes
             _ => {
                 let expr = plan.expressions();
@@ -92,7 +94,7 @@ mod tests {
         let plan = LogicalPlanBuilder::from(table_scan)
             .aggregate(vec![col("a")], vec![sum(col("b"))])
             .unwrap()
-            .limit(0)
+            .limit(None, Some(0))
             .unwrap()
             .build()
             .unwrap();
@@ -113,7 +115,7 @@ mod tests {
         let plan = LogicalPlanBuilder::from(table_scan)
             .aggregate(vec![col("a")], vec![sum(col("b"))])
             .unwrap()
-            .limit(0)
+            .limit(None, Some(0))
             .unwrap()
             .union(plan1)
             .unwrap()

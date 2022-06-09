@@ -359,7 +359,7 @@ fn optimize_plan(
             table_name,
             source,
             filters,
-            limit,
+            fetch: limit,
             ..
         }) => {
             let (projection, projected_schema) = get_projected_schema(
@@ -375,7 +375,7 @@ fn optimize_plan(
                 projection: Some(projection),
                 projected_schema,
                 filters: filters.clone(),
-                limit: *limit,
+                fetch: *limit,
             }))
         }
         LogicalPlan::Explain { .. } => Err(DataFusionError::Internal(
@@ -494,7 +494,6 @@ fn optimize_plan(
         // all other nodes: Add any additional columns used by
         // expressions in this node to the list of required columns
         LogicalPlan::Limit(_)
-        | LogicalPlan::Offset(_)
         | LogicalPlan::Filter { .. }
         | LogicalPlan::Repartition(_)
         | LogicalPlan::EmptyRelation(_)
@@ -854,12 +853,12 @@ mod tests {
 
         let plan = LogicalPlanBuilder::from(table_scan)
             .project(vec![col("c"), col("a")])?
-            .limit(5)?
+            .limit(None, Some(5))?
             .build()?;
 
         assert_fields_eq(&plan, vec!["c", "a"]);
 
-        let expected = "Limit: 5\
+        let expected = "Limit: skip=None, fetch=5\
         \n  Projection: #test.c, #test.a\
         \n    TableScan: test projection=Some([0, 2])";
 

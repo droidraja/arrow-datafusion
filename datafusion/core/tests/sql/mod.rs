@@ -16,6 +16,8 @@
 // under the License.
 
 use std::convert::TryFrom;
+use std::fs::File;
+use std::io::Write;
 use std::sync::Arc;
 
 use arrow::{
@@ -46,8 +48,6 @@ use datafusion::{
     physical_plan::ColumnarValue,
 };
 use datafusion::{execution::context::SessionContext, physical_plan::displayable};
-use std::fs::File;
-use std::io::Write;
 use tempfile::TempDir;
 
 /// A macro to assert that some particular line contains two substrings

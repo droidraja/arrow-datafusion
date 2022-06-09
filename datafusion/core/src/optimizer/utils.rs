@@ -27,7 +27,7 @@ use crate::optimizer::optimizer::OptimizerConfig;
 use crate::logical_plan::builder::build_table_udf_schema;
 use crate::logical_plan::{
     build_join_schema, Column, CreateMemoryTable, DFSchemaRef, Expr, ExprVisitable,
-    Limit, LogicalPlan, LogicalPlanBuilder, Offset, Operator, Partitioning, Recursion,
+    Limit, LogicalPlan, LogicalPlanBuilder, Operator, Partitioning, Recursion,
     Repartition, Union, Values,
 };
 use crate::prelude::lit;
@@ -243,12 +243,9 @@ pub fn from_plan(
             let right = &inputs[1];
             LogicalPlanBuilder::from(left).cross_join(right)?.build()
         }
-        LogicalPlan::Limit(Limit { n, .. }) => Ok(LogicalPlan::Limit(Limit {
-            n: *n,
-            input: Arc::new(inputs[0].clone()),
-        })),
-        LogicalPlan::Offset(Offset { offset, .. }) => Ok(LogicalPlan::Offset(Offset {
-            offset: *offset,
+        LogicalPlan::Limit(Limit { skip, fetch, .. }) => Ok(LogicalPlan::Limit(Limit {
+            skip: *skip,
+            fetch: *fetch,
             input: Arc::new(inputs[0].clone()),
         })),
         LogicalPlan::CreateMemoryTable(CreateMemoryTable { name, .. }) => {

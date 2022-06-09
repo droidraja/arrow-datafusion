@@ -47,8 +47,7 @@ use super::dfschema::ToDFSchema;
 use super::{exprlist_to_fields, Expr, JoinConstraint, JoinType, LogicalPlan, PlanType};
 use crate::logical_plan::{
     columnize_expr, normalize_col, normalize_cols, rewrite_sort_cols_by_aggs, Column,
-    CrossJoin, DFField, DFSchema, DFSchemaRef, Limit, Offset, Partitioning, Repartition,
-    Values,
+    CrossJoin, DFField, DFSchema, DFSchemaRef, Limit, Partitioning, Repartition, Values,
 };
 use crate::sql::utils::group_window_expr_by_sort_keys;
 
@@ -454,7 +453,7 @@ impl LogicalPlanBuilder {
             projected_schema: Arc::new(projected_schema),
             projection,
             filters,
-            limit: None,
+            fetch: None,
         });
         Ok(Self::from(table_scan))
     }
@@ -511,10 +510,16 @@ impl LogicalPlanBuilder {
         })))
     }
 
-    /// Apply a limit
-    pub fn limit(&self, n: usize) -> Result<Self> {
+    /// Limit the number of rows returned
+    ///
+    /// `skip` - Number of rows to skip before fetch any row.
+    ///
+    /// `fetch` - Maximum number of rows to fetch, after skipping `skip` rows,
+    ///          if specified.
+    pub fn limit(&self, skip: Option<usize>, fetch: Option<usize>) -> Result<Self> {
         Ok(Self::from(LogicalPlan::Limit(Limit {
-            n,
+            skip,
+            fetch,
             input: Arc::new(self.plan.clone()),
         })))
     }
@@ -530,14 +535,6 @@ impl LogicalPlanBuilder {
             input: Arc::new(self.plan.clone()),
             subqueries,
             schema,
-        })))
-    }
-
-    /// Apply an offset
-    pub fn offset(&self, offset: usize) -> Result<Self> {
-        Ok(Self::from(LogicalPlan::Offset(Offset {
-            offset,
-            input: Arc::new(self.plan.clone()),
         })))
     }
 
@@ -1288,15 +1285,13 @@ mod tests {
             vec![sum(col("salary")).alias("total_salary")],
         )?
         .project(vec![col("state"), col("total_salary")])?
-        .limit(10)?
-        .offset(2)?
+        .limit(Some(2), Some(10))?
         .build()?;
 
-        let expected = "Offset: 2\
-        \n  Limit: 10\
-        \n    Projection: #employee_csv.state, #total_salary\
-        \n      Aggregate: groupBy=[[#employee_csv.state]], aggr=[[SUM(#employee_csv.salary) AS total_salary]]\
-        \n        TableScan: employee_csv projection=Some([3, 4])";
+        let expected = "Limit: skip=2, fetch=10\
+        \n  Projection: #employee_csv.state, #total_salary\
+        \n    Aggregate: groupBy=[[#employee_csv.state]], aggr=[[SUM(#employee_csv.salary) AS total_salary]]\
+        \n      TableScan: employee_csv projection=Some([3, 4])";
 
         assert_eq!(expected, format!("{:?}", plan));
 
