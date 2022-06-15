@@ -483,7 +483,7 @@ mod tests {
     use crate::physical_plan::coalesce_partitions::CoalescePartitionsExec;
     use crate::physical_plan::common;
     use crate::prelude::SessionContext;
-    use crate::{test};
+    use crate::test;
 
     #[tokio::test]
     async fn limit() -> Result<()> {

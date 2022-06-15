@@ -66,8 +66,8 @@ pub use extension::UserDefinedLogicalNode;
 pub use operators::Operator;
 pub use plan::{
     CreateCatalogSchema, CreateExternalTable, CreateMemoryTable, CrossJoin, DropTable,
-    EmptyRelation, JoinConstraint, JoinType, Limit, LogicalPlan, Offset, Partitioning,
-    PlanType, PlanVisitor, Repartition, StringifiedPlan, Subquery, TableScan,
-    ToStringifiedPlan, Union, Values,
+    EmptyRelation, JoinConstraint, JoinType, Limit, LogicalPlan, Partitioning, PlanType,
+    PlanVisitor, Repartition, StringifiedPlan, Subquery, TableScan, ToStringifiedPlan,
+    Union, Values,
 };
 pub use registry::FunctionRegistry;

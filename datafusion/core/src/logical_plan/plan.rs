@@ -297,15 +297,6 @@ pub struct Values {
     pub values: Vec<Vec<Expr>>,
 }
 
-/// Adjusts the starting point at which the rest of the expressions begin to effect
-#[derive(Clone)]
-pub struct Offset {
-    /// The offset
-    pub offset: usize,
-    /// The logical plan
-    pub input: Arc<LogicalPlan>,
-}
-
 /// Aggregates its input based on a set of grouping and aggregate
 /// expressions (e.g. SUM).
 #[derive(Clone)]
