@@ -325,9 +325,15 @@ fn rewrite_sort_col_by_aggs(expr: Expr, plan: &LogicalPlan) -> Result<Expr> {
         LogicalPlan::Projection(Projection {
             input,
             expr: projection_expr,
+            alias,
             ..
         }) => {
             let res = rebase_expr(&expr, projection_expr.as_slice(), input)?;
+            let res = if alias.is_some() {
+                normalize_col(unnormalize_col(res), plan)?
+            } else {
+                res
+            };
             let res = rewrite_sort_col_by_aggs(res, input)?;
             Ok(res)
         }
@@ -355,13 +361,19 @@ fn normalize_col_with_schemas(
 
     impl<'a> ExprRewriter for ColumnNormalizer<'a> {
         fn mutate(&mut self, expr: Expr) -> Result<Expr> {
-            if let Expr::Column(c) = expr {
-                Ok(Expr::Column(c.normalize_with_schemas(
-                    self.schemas,
-                    self.using_columns,
-                )?))
-            } else {
-                Ok(expr)
+            match expr {
+                Expr::Column(c) => Ok(Expr::Column(
+                    c.normalize_with_schemas(self.schemas, self.using_columns)?,
+                )),
+                Expr::Alias(alias_expr, alias) => {
+                    if let Expr::Column(c) = &*alias_expr {
+                        if c.name == alias {
+                            return Ok(*alias_expr);
+                        }
+                    }
+                    Ok(Expr::Alias(alias_expr, alias))
+                }
+                _ => Ok(expr),
             }
         }
     }
