@@ -325,9 +325,15 @@ fn rewrite_sort_col_by_aggs(expr: Expr, plan: &LogicalPlan) -> Result<Expr> {
         LogicalPlan::Projection(Projection {
             input,
             expr: projection_expr,
+            alias,
             ..
         }) => {
             let res = rebase_expr(&expr, projection_expr.as_slice(), input)?;
+            let res = if alias.is_some() {
+                normalize_col(unnormalize_col(res), plan)?
+            } else {
+                res
+            };
             let res = rewrite_sort_col_by_aggs(res, input)?;
             Ok(res)
         }
