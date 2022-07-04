@@ -495,10 +495,16 @@ fn signature(fun: &BuiltinScalarFunction) -> Signature {
         BuiltinScalarFunction::Digest => {
             Signature::exact(vec![DataType::Utf8, DataType::Utf8], fun.volatility())
         }
-        BuiltinScalarFunction::DateTrunc => Signature::exact(
+        BuiltinScalarFunction::DateTrunc => Signature::one_of(
             vec![
-                DataType::Utf8,
-                DataType::Timestamp(TimeUnit::Nanosecond, None),
+                TypeSignature::Exact(vec![
+                    DataType::Utf8,
+                    DataType::Timestamp(TimeUnit::Nanosecond, None),
+                ]),
+                TypeSignature::Exact(vec![
+                    DataType::Utf8,
+                    DataType::Timestamp(TimeUnit::Nanosecond, Some("UTC".to_owned())),
+                ]),
             ],
             fun.volatility(),
         ),
