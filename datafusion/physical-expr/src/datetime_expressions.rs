@@ -316,6 +316,7 @@ fn to_interval_single(interval_period: i64, interval_unit: &str) -> Result<Scala
         match interval_unit.to_lowercase().as_str() {
             "year" => Ok(align_interval_parts(interval_period * 12, 0, 0)),
             "month" => Ok(align_interval_parts(interval_period, 0, 0)),
+            "week" | "weeks" => Ok(align_interval_parts(0, interval_period * 7, 0)),
             "day" | "days" => Ok(align_interval_parts(0, interval_period, 0)),
             "hour" | "hours" => {
                 Ok((0, 0, interval_period * SECONDS_PER_HOUR * MILLIS_PER_SECOND))
