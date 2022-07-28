@@ -377,7 +377,7 @@ pub fn make_utc_timestamp(
 
 fn date_trunc_single(granularity: &str, value: i64) -> Result<i64> {
     let value = timestamp_ns_to_datetime(value).with_nanosecond(0);
-    let value = match granularity {
+    let value = match granularity.to_lowercase().as_str() {
         "second" => value,
         "minute" => value.and_then(|d| d.with_second(0)),
         "hour" => value
