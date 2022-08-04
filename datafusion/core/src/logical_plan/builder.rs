@@ -841,7 +841,10 @@ impl LogicalPlanBuilder {
         &self,
         window_expr: impl IntoIterator<Item = impl Into<Expr>>,
     ) -> Result<Self> {
-        let window_expr = normalize_cols(window_expr, &self.plan)?;
+        let window_expr = window_expr
+            .into_iter()
+            .map(|e| e.into())
+            .collect::<Vec<_>>();
         let all_expr = window_expr.iter();
         validate_unique_names("Windows", all_expr.clone(), self.plan.schema())?;
         let mut window_fields: Vec<DFField> =
