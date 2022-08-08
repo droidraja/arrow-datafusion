@@ -22,7 +22,7 @@ use ahash::{CallHasher, RandomState};
 use arrow::array::{
     Array, ArrayRef, BooleanArray, Date32Array, Date64Array, DecimalArray,
     DictionaryArray, Float32Array, Float64Array, GenericListArray, Int16Array,
-    Int32Array, Int64Array, Int8Array, LargeStringArray, StringArray,
+    Int32Array, Int64Array, Int8Array, LargeStringArray, OffsetSizeTrait, StringArray,
     TimestampMicrosecondArray, TimestampMillisecondArray, TimestampNanosecondArray,
     TimestampSecondArray, UInt16Array, UInt32Array, UInt64Array, UInt8Array,
 };
@@ -253,15 +253,16 @@ fn create_hashes_dictionary<K: ArrowDictionaryKeyType>(
 }
 
 /// Hash the values in a list array
-fn create_hashes_list_array(
+fn create_hashes_list_array<T: OffsetSizeTrait>(
     array: &ArrayRef,
     random_state: &RandomState,
     hashes_buffer: &mut [u64],
 ) -> Result<()> {
     let list_arr = array
         .as_any()
-        .downcast_ref::<GenericListArray<i32>>()
+        .downcast_ref::<GenericListArray<T>>()
         .unwrap();
+
     let mut values: Vec<ArrayRef> = Vec::new();
     for i in 0..list_arr.len() {
         values.push(list_arr.value(i));
@@ -574,10 +575,11 @@ pub fn create_hashes<'a>(
                     )))
                 }
             },
-            DataType::List(_)
-            | DataType::LargeList(_)
-            | DataType::FixedSizeList(_, _) => {
-                create_hashes_list_array(col, random_state, hashes_buffer)?;
+            DataType::List(_) => {
+                create_hashes_list_array::<i32>(col, random_state, hashes_buffer)?
+            }
+            DataType::LargeList(_) => {
+                create_hashes_list_array::<i64>(col, random_state, hashes_buffer)?
             }
             _ => {
                 // This is internal because we should have caught this before.
@@ -710,37 +712,33 @@ mod tests {
     }
 
     #[test]
-    // Tests actual values of hashes, which are different if forcing collisions
-    #[cfg(not(feature = "force_hash_collisions"))]
     fn create_hashes_for_arr_list() {
-        use arrow::array::PrimitiveArray;
-
         let data = vec![
             Some(vec![]),
             None,
             Some(vec![Some(3), Some(5), Some(19)]),
             Some(vec![Some(6), Some(7)]),
         ];
-        let list_array =
-            GenericListArray::<i32>::from_iter_primitive::<Int32Type, _, _>(data)
-                .values();
-
-        let integers = vec![3, 5, 19, 6, 7];
-        let int_array = Arc::new(
-            integers
-                .iter()
-                .cloned()
-                .collect::<PrimitiveArray<Int32Type>>(),
-        );
-
         let random_state = RandomState::with_seeds(0, 0, 0, 0);
 
-        let mut int_hashes = vec![0; integers.len()];
-        create_hashes(&[int_array], &random_state, &mut int_hashes).unwrap();
+        // DataType::List
+        let list_array =
+            GenericListArray::<i32>::from_iter_primitive::<Int32Type, _, _>(data.clone());
 
-        let mut list_hashes = vec![0; integers.len()];
-        create_hashes(&[list_array], &random_state, &mut list_hashes).unwrap();
+        let hashes_buff = &mut vec![0; list_array.len()];
+        let list_hashes =
+            create_hashes(&[Arc::new(list_array)], &random_state, hashes_buff).unwrap();
 
-        assert_eq!(int_hashes, list_hashes);
+        assert_eq!(list_hashes.len(), 4);
+
+        // DataType::LargeList
+        let list_array =
+            GenericListArray::<i64>::from_iter_primitive::<Int32Type, _, _>(data.clone());
+
+        let hashes_buff = &mut vec![0; list_array.len()];
+        let list_hashes =
+            create_hashes(&[Arc::new(list_array)], &random_state, hashes_buff).unwrap();
+
+        assert_eq!(list_hashes.len(), 4);
     }
 }
