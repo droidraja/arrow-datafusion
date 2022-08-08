@@ -21,10 +21,10 @@ use crate::error::{DataFusionError, Result};
 use ahash::{CallHasher, RandomState};
 use arrow::array::{
     Array, ArrayRef, BooleanArray, Date32Array, Date64Array, DecimalArray,
-    DictionaryArray, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array,
-    Int8Array, LargeStringArray, StringArray, TimestampMicrosecondArray,
-    TimestampMillisecondArray, TimestampNanosecondArray, TimestampSecondArray,
-    UInt16Array, UInt32Array, UInt64Array, UInt8Array,
+    DictionaryArray, Float32Array, Float64Array, GenericListArray, Int16Array,
+    Int32Array, Int64Array, Int8Array, LargeStringArray, StringArray,
+    TimestampMicrosecondArray, TimestampMillisecondArray, TimestampNanosecondArray,
+    TimestampSecondArray, UInt16Array, UInt32Array, UInt64Array, UInt8Array,
 };
 use arrow::datatypes::{
     ArrowDictionaryKeyType, ArrowNativeType, DataType, Int16Type, Int32Type, Int64Type,
@@ -249,6 +249,31 @@ fn create_hashes_dictionary<K: ArrowDictionaryKeyType>(
             } // no update for Null, consistent with other hashes
         }
     }
+    Ok(())
+}
+
+/// Hash the values in a list array
+fn create_hashes_list_array(
+    array: &ArrayRef,
+    random_state: &RandomState,
+    hashes_buffer: &mut [u64],
+) -> Result<()> {
+    let list_arr = array
+        .as_any()
+        .downcast_ref::<GenericListArray<i32>>()
+        .unwrap();
+    let mut values: Vec<ArrayRef> = Vec::new();
+    for i in 0..list_arr.len() {
+        values.push(list_arr.value(i));
+    }
+
+    let mut array_hashes = vec![0; array.len()];
+    create_hashes(&values, random_state, &mut array_hashes)?;
+
+    for (buf_hash, arr_hash) in hashes_buffer.iter_mut().zip(array_hashes.iter()) {
+        *buf_hash = *arr_hash;
+    }
+
     Ok(())
 }
 
@@ -549,6 +574,11 @@ pub fn create_hashes<'a>(
                     )))
                 }
             },
+            DataType::List(_)
+            | DataType::LargeList(_)
+            | DataType::FixedSizeList(_, _) => {
+                create_hashes_list_array(col, random_state, hashes_buffer)?;
+            }
             _ => {
                 // This is internal because we should have caught this before.
                 return Err(DataFusionError::Internal(format!(
@@ -677,5 +707,40 @@ mod tests {
         assert_eq!(two_col_hashes.len(), 3);
 
         assert_ne!(one_col_hashes, two_col_hashes);
+    }
+
+    #[test]
+    // Tests actual values of hashes, which are different if forcing collisions
+    #[cfg(not(feature = "force_hash_collisions"))]
+    fn create_hashes_for_arr_list() {
+        use arrow::array::PrimitiveArray;
+
+        let data = vec![
+            Some(vec![]),
+            None,
+            Some(vec![Some(3), Some(5), Some(19)]),
+            Some(vec![Some(6), Some(7)]),
+        ];
+        let list_array =
+            GenericListArray::<i32>::from_iter_primitive::<Int32Type, _, _>(data)
+                .values();
+
+        let integers = vec![3, 5, 19, 6, 7];
+        let int_array = Arc::new(
+            integers
+                .iter()
+                .cloned()
+                .collect::<PrimitiveArray<Int32Type>>(),
+        );
+
+        let random_state = RandomState::with_seeds(0, 0, 0, 0);
+
+        let mut int_hashes = vec![0; integers.len()];
+        create_hashes(&[int_array], &random_state, &mut int_hashes).unwrap();
+
+        let mut list_hashes = vec![0; integers.len()];
+        create_hashes(&[list_array], &random_state, &mut list_hashes).unwrap();
+
+        assert_eq!(int_hashes, list_hashes);
     }
 }
