@@ -25,7 +25,7 @@ use std::task::{Context, Poll};
 
 use crate::error::{DataFusionError, Result};
 use crate::physical_plan::{
-    ColumnStatistics, DisplayFormatType, ExecutionPlan, Partitioning, PhysicalExpr,
+    DisplayFormatType, ExecutionPlan, Partitioning, PhysicalExpr,
 };
 use arrow::array::{new_null_array, Array, ArrayRef, NullArray};
 use arrow::compute::kernels;
@@ -196,10 +196,7 @@ impl ExecutionPlan for TableFunExec {
     }
 
     fn statistics(&self) -> Statistics {
-        stats_table_fun(
-            self.input.statistics(),
-            self.expr.iter().map(|(e, _)| Arc::clone(e)),
-        )
+        Statistics::default()
     }
 }
 
@@ -219,33 +216,6 @@ fn get_field_metadata(
         .field_with_name(name)
         .ok()
         .and_then(|f| f.metadata().as_ref().cloned())
-}
-
-fn stats_table_fun(
-    stats: Statistics,
-    exprs: impl Iterator<Item = Arc<dyn PhysicalExpr>>,
-) -> Statistics {
-    let column_statistics = stats.column_statistics.map(|input_col_stats| {
-        exprs
-            .map(|e| {
-                if let Some(col) = e.as_any().downcast_ref::<Column>() {
-                    input_col_stats[col.index()].clone()
-                } else {
-                    // TODO stats: estimate more statistics from expressions
-                    // (expressions should compute their statistics themselves)
-                    ColumnStatistics::default()
-                }
-            })
-            .collect()
-    });
-
-    Statistics {
-        is_exact: stats.is_exact,
-        num_rows: stats.num_rows,
-        column_statistics,
-        // TODO stats: knowing the type of the new columns we can guess the output size
-        total_byte_size: None,
-    }
 }
 
 impl TableFunStream {
