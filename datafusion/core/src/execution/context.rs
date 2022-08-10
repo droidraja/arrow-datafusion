@@ -3655,27 +3655,22 @@ mod tests {
         let ctx = SessionContext::new();
         ctx.register_table("my_table", test::table_with_sequence(1, 1)?)?;
 
-        let queries = vec![
-            "select my_table.i as i from my_table order by my_table.i asc",
-            "select * from (select my_table.i AS i from my_table order by my_table.i) source",
-            "select * from (select i from my_table order by my_table.i) t",
-            "select t.i as i from (select i as i from my_table) t order by t.i",
-        ];
-
-        for query in queries.iter() {
-            let result = plan_and_collect(&ctx, query).await?;
-
-            let expected = vec!["+---+", "| i |", "+---+", "| 1 |", "+---+"];
-            assert_batches_eq!(expected, &result);
-        }
-
         let result = plan_and_collect(
             &ctx,
-            "select * from (select count(i) as a from my_table order by count(i)) t",
+            "select my_table.i as i from my_table order by my_table.i asc",
         )
         .await?;
 
-        let expected = vec!["+---+", "| a |", "+---+", "| 1 |", "+---+"];
+        let expected = vec!["+---+", "| i |", "+---+", "| 1 |", "+---+"];
+        assert_batches_eq!(expected, &result);
+
+        let result = plan_and_collect(
+            &ctx,
+            "select * from (select my_table.i AS i from my_table order by my_table.i) source",
+        )
+        .await?;
+
+        let expected = vec!["+---+", "| i |", "+---+", "| 1 |", "+---+"];
         assert_batches_eq!(expected, &result);
 
         Ok(())
