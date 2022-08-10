@@ -21,7 +21,9 @@ use super::Expr;
 use crate::logical_plan::plan::{Aggregate, Projection};
 use crate::logical_plan::DFSchema;
 use crate::logical_plan::LogicalPlan;
-use crate::sql::utils::rebase_expr;
+use crate::sql::utils::{
+    extract_aliased_expr_names, rebase_expr, resolve_exprs_to_aliases,
+};
 use datafusion_common::Column;
 use datafusion_common::Result;
 use std::collections::HashMap;
@@ -327,23 +329,18 @@ fn rewrite_sort_col_by_aggs(expr: Expr, plan: &LogicalPlan) -> Result<Expr> {
             expr: projection_expr,
             ..
         }) => {
-            let res = rebase_expr(&expr, projection_expr.as_slice(), input)?;
-            let res = projection_expr
-                .iter()
-                .find_map(|e| match e {
-                    Expr::Alias(expr, alias) => {
-                        if expr.name(input.schema()).unwrap_or_default()
-                            == res.name(input.schema()).unwrap_or_default()
-                        {
-                            return Some(Expr::Column(Column::from_name(alias)));
-                        }
-                        None
-                    }
-                    _ => None,
-                })
-                .unwrap_or(normalize_col(unnormalize_col(res), plan)?);
-            let res = rewrite_sort_col_by_aggs(res, input)?;
-            Ok(res)
+            let res = normalize_col(
+                unnormalize_col(rebase_expr(&expr, projection_expr.as_slice(), input)?),
+                plan,
+            )?;
+            let alias_map = extract_aliased_expr_names(&projection_expr, input.schema());
+            let res = resolve_exprs_to_aliases(&res, &alias_map, input.schema())?;
+
+            Ok(if let LogicalPlan::Aggregate(_) = **input {
+                rewrite_sort_col_by_aggs(res, input)?
+            } else {
+                res
+            })
         }
         _ => Ok(expr),
     }
