@@ -16,6 +16,7 @@
 // under the License.
 
 use super::*;
+use datafusion::datasource::empty::EmptyTable;
 
 #[tokio::test]
 async fn case_when() -> Result<()> {
