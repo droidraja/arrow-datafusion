@@ -15,27 +15,25 @@
 # specific language governing permissions and limitations
 # under the License.
 
-[package]
-name = "cube-ext"
-description = ""
-version = "1.0.0"
-homepage = "https://github.com/apache/arrow-datafusion"
-repository = "https://github.com/apache/arrow-datafusion"
-readme = "README.md"
-authors = ["Cube Dev Inc"]
-license = ""
-keywords = []
-edition = "2021"
-rust-version = "1.59"
-
-[features]
-
-[lib]
-name = "cube_ext"
-path = "src/lib.rs"
-
-[dependencies]
-arrow = { git = 'https://github.com/cube-js/arrow-rs.git', rev = "ce035c0c8ec3bca7f1be9e511e61dca4851ece31", features = ["prettyprint"] }
-datafusion-common = { path = "../common", version = "7.0.0" }
-datafusion-expr = { path = "../expr", version = "7.0.0" }
-chrono = { version = "0.4.16", package = "chrono", default-features = false, features = ["clock"]}
+name: Prepare Rust Builder
+description: 'Prepare Rust Build Environment'
+inputs:
+  rust-version:
+    description: 'version of rust to install (e.g. stable)'
+    required: true
+    default: 'stable'
+runs:
+  using: "composite"
+  steps:
+    - name: Install Build Dependencies
+      shell: bash
+      run: |
+        apt-get update
+        apt-get install -y protobuf-compiler
+    - name: Setup Rust toolchain
+      shell: bash
+      run: |
+        echo "Installing ${{ inputs.rust-version }}"
+        rustup toolchain install ${{ inputs.rust-version }}
+        rustup default ${{ inputs.rust-version }}
+        rustup component add rustfmt

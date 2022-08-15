@@ -28,7 +28,7 @@ repository = "https://github.com/apache/arrow-datafusion"
 rust-version = "1.59"
 
 [dependencies]
-arrow = { git = 'https://github.com/cube-js/arrow-rs.git', rev = "5eec82b6bde95d824bb9f3721789c98e033f812f" }
+arrow = { git = 'https://github.com/cube-js/arrow-rs.git', rev = "ce035c0c8ec3bca7f1be9e511e61dca4851ece31" }
 ballista = { path = "../ballista/rust/client", version = "0.6.0", optional = true }
 clap = { version = "3", features = ["derive", "cargo"] }
 datafusion = { path = "../datafusion/core", version = "7.0.0" }
