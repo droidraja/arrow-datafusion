@@ -297,10 +297,7 @@ pub fn rewrite_sort_cols_by_aggs(
                     nulls_first,
                 } => {
                     let sort = Expr::Sort {
-                        expr: Box::new(rewrite_sort_col_by_aggs(
-                            normalize_col(*expr, plan)?,
-                            plan,
-                        )?),
+                        expr: Box::new(rewrite_sort_col_by_aggs(*expr, plan)?),
                         asc,
                         nulls_first,
                     };
@@ -313,37 +310,54 @@ pub fn rewrite_sort_cols_by_aggs(
 }
 
 fn rewrite_sort_col_by_aggs(expr: Expr, plan: &LogicalPlan) -> Result<Expr> {
-    match plan {
-        LogicalPlan::Aggregate(Aggregate {
-            input,
-            aggr_expr,
-            group_expr,
-            ..
-        }) => {
-            let res = rebase_expr(&expr, aggr_expr.as_slice(), input)?;
-            let res = rebase_expr(&res, group_expr.as_slice(), input)?;
-            Ok(res)
-        }
-        LogicalPlan::Projection(Projection {
-            input,
-            expr: projection_expr,
-            ..
-        }) => {
-            let res = normalize_col(
-                unnormalize_col(rebase_expr(&expr, projection_expr.as_slice(), input)?),
-                plan,
-            )?;
-            let alias_map = extract_aliased_expr_names(&projection_expr, input.schema());
-            let res = resolve_exprs_to_aliases(&res, &alias_map, input.schema())?;
+    fn rewrite_sort_col(expr: Expr, plan: &LogicalPlan) -> Result<Expr> {
+        match plan {
+            LogicalPlan::Aggregate(Aggregate {
+                input,
+                aggr_expr,
+                group_expr,
+                ..
+            }) => {
+                let res = rebase_expr(&expr, aggr_expr.as_slice(), input)?;
+                let res = rebase_expr(&res, group_expr.as_slice(), input)?;
+                Ok(res)
+            }
+            LogicalPlan::Projection(Projection {
+                input,
+                expr: projection_expr,
+                ..
+            }) => {
+                let alias_map =
+                    extract_aliased_expr_names(&projection_expr, input.schema());
+                let res = resolve_exprs_to_aliases(&expr, &alias_map, input.schema())?;
+                let res = normalize_col(
+                    unnormalize_col(rebase_expr(
+                        &res,
+                        projection_expr.as_slice(),
+                        input,
+                    )?),
+                    plan,
+                )?;
 
-            Ok(if let LogicalPlan::Aggregate(_) = **input {
-                rewrite_sort_col_by_aggs(res, input)?
-            } else {
-                res
-            })
+                Ok(if let LogicalPlan::Aggregate(_) = **input {
+                    rewrite_sort_col(res, input)?
+                } else {
+                    res
+                })
+            }
+            _ => Ok(expr),
         }
-        _ => Ok(expr),
     }
+
+    let expr = match &plan {
+        LogicalPlan::Projection(Projection { input, .. }) => match &expr {
+            Expr::Column(_) => normalize_col(expr, plan)?,
+            _ => normalize_col(expr, input)?,
+        },
+        _ => normalize_col(expr, plan)?,
+    };
+
+    rewrite_sort_col(expr, plan)
 }
 
 /// Recursively call [`Column::normalize_with_schemas`] on all Column expressions

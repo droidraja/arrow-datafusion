@@ -3660,6 +3660,8 @@ mod tests {
             "select * from (select my_table.i AS i from my_table order by my_table.i) source",
             "select * from (select i from my_table order by my_table.i) t",
             "select t.i as i from (select i as i from my_table) t order by t.i",
+            "select i as i from (select count(i) as i from my_table order by count(my_table.i)) t",
+            "select i as i from (select count(i) as i from my_table order by count(i)) t",
         ];
 
         for query in queries.iter() {
