@@ -3662,6 +3662,8 @@ mod tests {
             "select t.i as i from (select i as i from my_table) t order by t.i",
             "select i as i from (select count(i) as i from my_table order by count(my_table.i)) t",
             "select i as i from (select count(i) as i from my_table order by count(i)) t",
+            "select my_table.i as i from my_table group by my_table.i order by my_table.i asc",
+            "select * from (select i from my_table group by my_table.i order by my_table.i) t",
         ];
 
         for query in queries.iter() {
