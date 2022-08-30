@@ -329,7 +329,7 @@ mod tests {
             .unwrap();
 
         let expected = "Aggregate: groupBy=[[#test.a]], aggr=[[SUM(#test.b)]]\
-            \n  TableScan: test";
+            \n  TableScan: test projection=None";
         assert_optimized_plan_eq(&plan, expected);
     }
 }
