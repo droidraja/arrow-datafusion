@@ -15,14 +15,13 @@
 //! Filter Push Down optimizer rule ensures that filters are applied as early as possible in the plan
 
 use crate::datasource::datasource::TableProviderFilterPushDown;
-use crate::execution::context::ExecutionProps;
 use crate::logical_plan::plan::{Aggregate, Filter, Join, Projection, Union};
 use crate::logical_plan::{
     and, col, replace_col, Column, CrossJoin, JoinType, Limit, LogicalPlan, TableScan,
 };
 use crate::logical_plan::{DFSchema, Expr};
-use crate::optimizer::optimizer::OptimizerRule;
-use crate::optimizer::utils;
+use crate::optimizer::optimizer::OptimizerConfig;
+use crate::optimizer::{optimizer::OptimizerRule, utils};
 use crate::{error::Result, logical_plan::Operator};
 use std::{
     collections::{HashMap, HashSet},
@@ -502,7 +501,7 @@ fn optimize(plan: &LogicalPlan, mut state: State) -> Result<LogicalPlan> {
             filters,
             projection,
             table_name,
-            limit,
+            fetch,
         }) => {
             let mut used_columns = HashSet::new();
             let mut new_filters = filters.clone();
@@ -538,7 +537,7 @@ fn optimize(plan: &LogicalPlan, mut state: State) -> Result<LogicalPlan> {
                     projected_schema: projected_schema.clone(),
                     table_name: table_name.clone(),
                     filters: new_filters,
-                    limit: *limit,
+                    fetch: *fetch,
                 }),
             )
         }
@@ -560,7 +559,7 @@ impl OptimizerRule for FilterPushDown {
         "filter_push_down"
     }
 
-    fn optimize(&self, plan: &LogicalPlan, _: &ExecutionProps) -> Result<LogicalPlan> {
+    fn optimize(&self, plan: &LogicalPlan, _: &OptimizerConfig) -> Result<LogicalPlan> {
         optimize(plan, State::default())
     }
 }
@@ -605,7 +604,7 @@ mod tests {
 
     fn optimize_plan(plan: &LogicalPlan) -> LogicalPlan {
         let rule = FilterPushDown::new();
-        rule.optimize(plan, &ExecutionProps::new())
+        rule.optimize(plan, &OptimizerConfig::new())
             .expect("failed to optimize plan")
     }
 
@@ -636,13 +635,13 @@ mod tests {
         let table_scan = test_table_scan()?;
         let plan = LogicalPlanBuilder::from(table_scan)
             .project(vec![col("a"), col("b")])?
-            .limit(10)?
+            .limit(None, Some(10))?
             .filter(col("a").eq(lit(1i64)))?
             .build()?;
         // filter is before single projection
         let expected = "\
             Filter: #test.a = Int64(1)\
-            \n  Limit: 10\
+            \n  Limit: skip=None, fetch=10\
             \n    Projection: #test.a, #test.b\
             \n      TableScan: test projection=None";
         assert_optimized_plan_eq(&plan, expected);
@@ -888,8 +887,8 @@ mod tests {
         let table_scan = test_table_scan()?;
         let plan = LogicalPlanBuilder::from(table_scan)
             .project(vec![col("a"), col("b")])?
-            .limit(20)?
-            .limit(10)?
+            .limit(None, Some(20))?
+            .limit(None, Some(10))?
             .project(vec![col("a"), col("b")])?
             .filter(col("a").eq(lit(1i64)))?
             .build()?;
@@ -897,8 +896,8 @@ mod tests {
         let expected = "\
             Projection: #test.a, #test.b\
             \n  Filter: #test.a = Int64(1)\
-            \n    Limit: 10\
-            \n      Limit: 20\
+            \n    Limit: skip=None, fetch=10\
+            \n      Limit: skip=None, fetch=20\
             \n        Projection: #test.a, #test.b\
             \n          TableScan: test projection=None";
         assert_optimized_plan_eq(&plan, expected);
@@ -951,7 +950,7 @@ mod tests {
         let plan = LogicalPlanBuilder::from(table_scan)
             .project(vec![col("a")])?
             .filter(col("a").lt_eq(lit(1i64)))?
-            .limit(1)?
+            .limit(None, Some(1))?
             .project(vec![col("a")])?
             .filter(col("a").gt_eq(lit(1i64)))?
             .build()?;
@@ -962,7 +961,7 @@ mod tests {
             format!("{:?}", plan),
             "Filter: #test.a >= Int64(1)\
              \n  Projection: #test.a\
-             \n    Limit: 1\
+             \n    Limit: skip=None, fetch=1\
              \n      Filter: #test.a <= Int64(1)\
              \n        Projection: #test.a\
              \n          TableScan: test projection=None"
@@ -971,7 +970,7 @@ mod tests {
         let expected = "\
         Projection: #test.a\
         \n  Filter: #test.a >= Int64(1)\
-        \n    Limit: 1\
+        \n    Limit: skip=None, fetch=1\
         \n      Projection: #test.a\
         \n        Filter: #test.a <= Int64(1)\
         \n          TableScan: test projection=None";
@@ -985,7 +984,7 @@ mod tests {
     fn two_filters_on_same_depth() -> Result<()> {
         let table_scan = test_table_scan()?;
         let plan = LogicalPlanBuilder::from(table_scan)
-            .limit(1)?
+            .limit(None, Some(1))?
             .filter(col("a").lt_eq(lit(1i64)))?
             .filter(col("a").gt_eq(lit(1i64)))?
             .project(vec![col("a")])?
@@ -997,14 +996,14 @@ mod tests {
             "Projection: #test.a\
             \n  Filter: #test.a >= Int64(1)\
             \n    Filter: #test.a <= Int64(1)\
-            \n      Limit: 1\
+            \n      Limit: skip=None, fetch=1\
             \n        TableScan: test projection=None"
         );
 
         let expected = "\
         Projection: #test.a\
         \n  Filter: #test.a >= Int64(1) AND #test.a <= Int64(1)\
-        \n    Limit: 1\
+        \n    Limit: skip=None, fetch=1\
         \n      TableScan: test projection=None";
 
         assert_optimized_plan_eq(&plan, expected);
@@ -1418,7 +1417,7 @@ mod tests {
             )?),
             projection: None,
             source: Arc::new(test_provider),
-            limit: None,
+            fetch: None,
         });
 
         LogicalPlanBuilder::from(table_scan)
@@ -1491,7 +1490,7 @@ mod tests {
             )?),
             projection: Some(vec![0]),
             source: Arc::new(test_provider),
-            limit: None,
+            fetch: None,
         });
 
         let plan = LogicalPlanBuilder::from(table_scan)

@@ -27,6 +27,7 @@ use crate::physical_plan::{
 use arrow::array::NullArray;
 use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
 use arrow::record_batch::RecordBatch;
+use log::debug;
 
 use super::expressions::PhysicalSortExpr;
 use super::{common, SendableRecordBatchStream, Statistics};
@@ -41,6 +42,8 @@ pub struct EmptyExec {
     produce_one_row: bool,
     /// The schema for the produced row
     schema: SchemaRef,
+    /// Number of partitions
+    partitions: usize,
 }
 
 impl EmptyExec {
@@ -49,7 +52,14 @@ impl EmptyExec {
         EmptyExec {
             produce_one_row,
             schema,
+            partitions: 1,
         }
+    }
+
+    /// Create a new EmptyExec with specified partition number
+    pub fn with_partitions(mut self, partitions: usize) -> Self {
+        self.partitions = partitions;
+        self
     }
 
     /// Specifies whether this exec produces a row or not
@@ -96,7 +106,7 @@ impl ExecutionPlan for EmptyExec {
 
     /// Get the output partitioning of this plan
     fn output_partitioning(&self) -> Partitioning {
-        Partitioning::UnknownPartitioning(1)
+        Partitioning::UnknownPartitioning(self.partitions)
     }
 
     fn output_ordering(&self) -> Option<&[PhysicalSortExpr]> {
@@ -104,30 +114,26 @@ impl ExecutionPlan for EmptyExec {
     }
 
     fn with_new_children(
-        &self,
-        children: Vec<Arc<dyn ExecutionPlan>>,
+        self: Arc<Self>,
+        _: Vec<Arc<dyn ExecutionPlan>>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
-        match children.len() {
-            0 => Ok(Arc::new(EmptyExec::new(
-                self.produce_one_row,
-                self.schema.clone(),
-            ))),
-            _ => Err(DataFusionError::Internal(
-                "EmptyExec wrong number of children".to_string(),
-            )),
-        }
+        Ok(Arc::new(EmptyExec::new(
+            self.produce_one_row,
+            self.schema.clone(),
+        )))
     }
 
     async fn execute(
         &self,
         partition: usize,
-        _context: Arc<TaskContext>,
+        context: Arc<TaskContext>,
     ) -> Result<SendableRecordBatchStream> {
-        // GlobalLimitExec has a single output partition
-        if 0 != partition {
+        debug!("Start EmptyExec::execute for partition {} of context session_id {} and task_id {:?}", partition, context.session_id(), context.task_id());
+
+        if partition >= self.partitions {
             return Err(DataFusionError::Internal(format!(
-                "EmptyExec invalid partition {} (expected 0)",
-                partition
+                "EmptyExec invalid partition {} (expected less than {})",
+                partition, self.partitions
             )));
         }
 
@@ -161,6 +167,7 @@ impl ExecutionPlan for EmptyExec {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::physical_plan::with_new_children_if_necessary;
     use crate::prelude::SessionContext;
     use crate::{physical_plan::common, test_util};
 
@@ -184,18 +191,19 @@ mod tests {
     #[test]
     fn with_new_children() -> Result<()> {
         let schema = test_util::aggr_test_schema();
-        let empty = EmptyExec::new(false, schema.clone());
-        let empty_with_row = EmptyExec::new(true, schema);
+        let empty = Arc::new(EmptyExec::new(false, schema.clone()));
+        let empty_with_row = Arc::new(EmptyExec::new(true, schema));
 
-        let empty2 = empty.with_new_children(vec![])?;
+        let empty2 = with_new_children_if_necessary(empty.clone(), vec![])?;
         assert_eq!(empty.schema(), empty2.schema());
 
-        let empty_with_row_2 = empty_with_row.with_new_children(vec![])?;
+        let empty_with_row_2 =
+            with_new_children_if_necessary(empty_with_row.clone(), vec![])?;
         assert_eq!(empty_with_row.schema(), empty_with_row_2.schema());
 
         let too_many_kids = vec![empty2];
         assert!(
-            empty.with_new_children(too_many_kids).is_err(),
+            with_new_children_if_necessary(empty, too_many_kids).is_err(),
             "expected error when providing list of kids"
         );
         Ok(())
@@ -226,6 +234,25 @@ mod tests {
 
         // should have one item
         assert_eq!(batches.len(), 1);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn produce_one_row_multiple_partition() -> Result<()> {
+        let session_ctx = SessionContext::new();
+        let task_ctx = session_ctx.task_ctx();
+        let schema = test_util::aggr_test_schema();
+        let partitions = 3;
+        let empty = EmptyExec::new(true, schema).with_partitions(partitions);
+
+        for n in 0..partitions {
+            let iter = empty.execute(n, task_ctx.clone()).await?;
+            let batches = common::collect(iter).await?;
+
+            // should have one item
+            assert_eq!(batches.len(), 1);
+        }
 
         Ok(())
     }

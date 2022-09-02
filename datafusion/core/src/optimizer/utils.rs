@@ -18,11 +18,11 @@
 //! Collection of utility functions that are leveraged by the query optimizer rules
 
 use super::optimizer::OptimizerRule;
-use crate::execution::context::ExecutionProps;
 use crate::logical_plan::plan::{
     Aggregate, Analyze, Extension, Filter, Join, Projection, Sort, Subquery, TableUDFs,
     Window,
 };
+use crate::optimizer::optimizer::OptimizerConfig;
 
 use crate::logical_plan::builder::build_table_udf_schema;
 use crate::logical_plan::{
@@ -113,13 +113,13 @@ pub fn expr_to_columns(expr: &Expr, accum: &mut HashSet<Column>) -> Result<()> {
 pub fn optimize_children(
     optimizer: &impl OptimizerRule,
     plan: &LogicalPlan,
-    execution_props: &ExecutionProps,
+    optimizer_config: &OptimizerConfig,
 ) -> Result<LogicalPlan> {
     let new_exprs = plan.expressions();
     let new_inputs = plan
         .inputs()
         .into_iter()
-        .map(|plan| optimizer.optimize(plan, execution_props))
+        .map(|plan| optimizer.optimize(plan, optimizer_config))
         .collect::<Result<Vec<_>>>()?;
 
     from_plan(plan, &new_exprs, &new_inputs)
@@ -243,8 +243,9 @@ pub fn from_plan(
             let right = &inputs[1];
             LogicalPlanBuilder::from(left).cross_join(right)?.build()
         }
-        LogicalPlan::Limit(Limit { n, .. }) => Ok(LogicalPlan::Limit(Limit {
-            n: *n,
+        LogicalPlan::Limit(Limit { skip, fetch, .. }) => Ok(LogicalPlan::Limit(Limit {
+            skip: *skip,
+            fetch: *fetch,
             input: Arc::new(inputs[0].clone()),
         })),
         LogicalPlan::CreateMemoryTable(CreateMemoryTable { name, .. }) => {

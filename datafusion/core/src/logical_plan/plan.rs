@@ -128,8 +128,8 @@ pub struct TableScan {
     pub projected_schema: DFSchemaRef,
     /// Optional expressions to be used as filters by the table provider
     pub filters: Vec<Expr>,
-    /// Optional limit to skip reading
-    pub limit: Option<usize>,
+    /// Optional number of rows to read
+    pub fetch: Option<usize>,
 }
 
 /// Apply Cross Join to two logical plans
@@ -256,8 +256,10 @@ pub struct EmptyRelation {
 /// Produces the first `n` tuples from its input and discards the rest.
 #[derive(Clone)]
 pub struct Limit {
-    /// The limit
-    pub n: usize,
+    /// Number of rows to skip before fetch
+    pub skip: Option<usize>,
+    /// Maximum number of rows to fetch
+    pub fetch: Option<usize>,
     /// The logical plan
     pub input: Arc<LogicalPlan>,
 }
@@ -971,7 +973,7 @@ impl LogicalPlan {
                         ref table_name,
                         ref projection,
                         ref filters,
-                        ref limit,
+                        ref fetch,
                         ..
                     }) => {
                         write!(
@@ -1016,8 +1018,8 @@ impl LogicalPlan {
                             }
                         }
 
-                        if let Some(n) = limit {
-                            write!(f, ", limit={}", n)?;
+                        if let Some(n) = fetch {
+                            write!(f, ", fetch={}", n)?;
                         }
 
                         Ok(())
@@ -1121,7 +1123,18 @@ impl LogicalPlan {
                             )
                         }
                     },
-                    LogicalPlan::Limit(Limit { ref n, .. }) => write!(f, "Limit: {}", n),
+                    LogicalPlan::Limit(Limit {
+                        ref skip,
+                        ref fetch,
+                        ..
+                    }) => {
+                        write!(
+                            f,
+                            "Limit: skip={}, fetch={}",
+                            skip.map_or("None".to_string(), |x| x.to_string()),
+                            fetch.map_or_else(|| "None".to_string(), |x| x.to_string())
+                        )
+                    }
                     LogicalPlan::CreateExternalTable(CreateExternalTable {
                         ref name,
                         ..

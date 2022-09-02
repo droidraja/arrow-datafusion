@@ -67,7 +67,7 @@ pub use operators::Operator;
 pub use plan::{
     CreateCatalogSchema, CreateExternalTable, CreateMemoryTable, CrossJoin, DropTable,
     EmptyRelation, JoinConstraint, JoinType, Limit, LogicalPlan, Partitioning, PlanType,
-    PlanVisitor, Repartition, TableScan, Union, Values,
+    PlanVisitor, Repartition, StringifiedPlan, Subquery, TableScan, ToStringifiedPlan,
+    Union, Values,
 };
-pub(crate) use plan::{StringifiedPlan, ToStringifiedPlan};
 pub use registry::FunctionRegistry;

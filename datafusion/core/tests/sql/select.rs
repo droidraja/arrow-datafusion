@@ -540,8 +540,15 @@ async fn query_get_indexed_field() -> Result<()> {
     // Original column is micros, convert to millis and check timestamp
     let sql = "SELECT some_list[1] as i0 FROM ints LIMIT 3";
     let actual = execute_to_batches(&ctx, sql).await;
+    #[rustfmt::skip]
     let expected = vec![
-        "+----+", "| i0 |", "+----+", "| 0  |", "| 4  |", "| 7  |", "+----+",
+        "+----+",
+        "| i0 |",
+        "+----+",
+        "| 0  |",
+        "| 4  |",
+        "| 7  |",
+        "+----+",
     ];
     assert_batches_eq!(expected, &actual);
     Ok(())
@@ -609,8 +616,15 @@ async fn query_nested_get_indexed_field() -> Result<()> {
     assert_batches_eq!(expected, &actual);
     let sql = "SELECT some_list[2 - 1][2 - 1] as i0 FROM ints LIMIT 3";
     let actual = execute_to_batches(&ctx, sql).await;
+    #[rustfmt::skip]
     let expected = vec![
-        "+----+", "| i0 |", "+----+", "| 0  |", "| 5  |", "| 11 |", "+----+",
+        "+----+",
+        "| i0 |",
+        "+----+",
+        "| 0  |",
+        "| 5  |",
+        "| 11 |",
+        "+----+",
     ];
     assert_batches_eq!(expected, &actual);
 
@@ -743,8 +757,15 @@ async fn query_nested_get_indexed_field_on_struct() -> Result<()> {
 
     let sql = "SELECT some_struct['bar'][1] as i0 FROM structs LIMIT 3";
     let actual = execute_to_batches(&ctx, sql).await;
+    #[rustfmt::skip]
     let expected = vec![
-        "+----+", "| i0 |", "+----+", "| 0  |", "| 4  |", "| 8  |", "+----+",
+        "+----+",
+        "| i0 |",
+        "+----+",
+        "| 0  |",
+        "| 4  |",
+        "| 8  |",
+        "+----+",
     ];
     assert_batches_eq!(expected, &actual);
     Ok(())
@@ -989,19 +1010,41 @@ async fn query_cte() -> Result<()> {
     let sql =
         "WITH t AS (SELECT 1 AS a), u AS (SELECT 2 AS a) SELECT * FROM t UNION ALL SELECT * FROM u";
     let actual = execute_to_batches(&ctx, sql).await;
-    let expected = vec!["+---+", "| a |", "+---+", "| 1 |", "| 2 |", "+---+"];
+    #[rustfmt::skip]
+    let expected = vec![
+        "+---+",
+        "| a |",
+        "+---+",
+        "| 1 |",
+        "| 2 |",
+        "+---+"
+    ];
     assert_batches_eq!(expected, &actual);
 
     // with + join
     let sql = "WITH t AS (SELECT 1 AS id1), u AS (SELECT 1 AS id2, 5 as x) SELECT x FROM t JOIN u ON (id1 = id2)";
     let actual = execute_to_batches(&ctx, sql).await;
-    let expected = vec!["+---+", "| x |", "+---+", "| 5 |", "+---+"];
+    #[rustfmt::skip]
+    let expected = vec![
+        "+---+",
+        "| x |",
+        "+---+",
+        "| 5 |",
+        "+---+"
+    ];
     assert_batches_eq!(expected, &actual);
 
     // backward reference
     let sql = "WITH t AS (SELECT 1 AS id1), u AS (SELECT * FROM t) SELECT * from u";
     let actual = execute_to_batches(&ctx, sql).await;
-    let expected = vec!["+-----+", "| id1 |", "+-----+", "| 1   |", "+-----+"];
+    #[rustfmt::skip]
+    let expected = vec![
+        "+-----+",
+        "| id1 |",
+        "+-----+",
+        "| 1   |",
+        "+-----+"
+    ];
     assert_batches_eq!(expected, &actual);
 
     Ok(())
@@ -1106,4 +1149,150 @@ async fn query_empty_table() {
         .expect("Query empty table");
     let expected = vec!["++", "++"];
     assert_batches_sorted_eq!(expected, &result);
+}
+
+#[tokio::test]
+async fn boolean_literal() -> Result<()> {
+    let results =
+        execute_with_partition("SELECT c1, c3 FROM test WHERE c1 > 2 AND c3 = true", 4)
+            .await?;
+
+    let expected = vec![
+        "+----+------+",
+        "| c1 | c3   |",
+        "+----+------+",
+        "| 3  | true |",
+        "| 3  | true |",
+        "| 3  | true |",
+        "| 3  | true |",
+        "| 3  | true |",
+        "+----+------+",
+    ];
+    assert_batches_sorted_eq!(expected, &results);
+
+    Ok(())
+}
+
+async fn run_count_distinct_integers_aggregated_scenario(
+    partitions: Vec<Vec<(&str, u64)>>,
+) -> Result<Vec<RecordBatch>> {
+    let tmp_dir = TempDir::new()?;
+    let ctx = SessionContext::new();
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("c_group", DataType::Utf8, false),
+        Field::new("c_int8", DataType::Int8, false),
+        Field::new("c_int16", DataType::Int16, false),
+        Field::new("c_int32", DataType::Int32, false),
+        Field::new("c_int64", DataType::Int64, false),
+        Field::new("c_uint8", DataType::UInt8, false),
+        Field::new("c_uint16", DataType::UInt16, false),
+        Field::new("c_uint32", DataType::UInt32, false),
+        Field::new("c_uint64", DataType::UInt64, false),
+    ]));
+
+    for (i, partition) in partitions.iter().enumerate() {
+        let filename = format!("partition-{}.csv", i);
+        let file_path = tmp_dir.path().join(&filename);
+        let mut file = File::create(file_path)?;
+        for row in partition {
+            let row_str = format!(
+                "{},{}\n",
+                row.0,
+                // Populate values for each of the integer fields in the
+                // schema.
+                (0..8)
+                    .map(|_| { row.1.to_string() })
+                    .collect::<Vec<_>>()
+                    .join(","),
+            );
+            file.write_all(row_str.as_bytes())?;
+        }
+    }
+    ctx.register_csv(
+        "test",
+        tmp_dir.path().to_str().unwrap(),
+        CsvReadOptions::new().schema(&schema).has_header(false),
+    )
+    .await?;
+
+    let results = plan_and_collect(
+        &ctx,
+        "
+          SELECT
+            c_group,
+            COUNT(c_uint64),
+            COUNT(DISTINCT c_int8),
+            COUNT(DISTINCT c_int16),
+            COUNT(DISTINCT c_int32),
+            COUNT(DISTINCT c_int64),
+            COUNT(DISTINCT c_uint8),
+            COUNT(DISTINCT c_uint16),
+            COUNT(DISTINCT c_uint32),
+            COUNT(DISTINCT c_uint64)
+          FROM test
+          GROUP BY c_group
+        ",
+    )
+    .await?;
+
+    Ok(results)
+}
+
+#[tokio::test]
+async fn count_distinct_integers_aggregated_single_partition() -> Result<()> {
+    let partitions = vec![
+        // The first member of each tuple will be the value for the
+        // `c_group` column, and the second member will be the value for
+        // each of the int/uint fields.
+        vec![
+            ("a", 1),
+            ("a", 1),
+            ("a", 2),
+            ("b", 9),
+            ("c", 9),
+            ("c", 10),
+            ("c", 9),
+        ],
+    ];
+
+    let results = run_count_distinct_integers_aggregated_scenario(partitions).await?;
+
+    let expected = vec![
+        "+---------+----------------------+-----------------------------+------------------------------+------------------------------+------------------------------+------------------------------+-------------------------------+-------------------------------+-------------------------------+",
+        "| c_group | COUNT(test.c_uint64) | COUNT(DISTINCT test.c_int8) | COUNT(DISTINCT test.c_int16) | COUNT(DISTINCT test.c_int32) | COUNT(DISTINCT test.c_int64) | COUNT(DISTINCT test.c_uint8) | COUNT(DISTINCT test.c_uint16) | COUNT(DISTINCT test.c_uint32) | COUNT(DISTINCT test.c_uint64) |",
+        "+---------+----------------------+-----------------------------+------------------------------+------------------------------+------------------------------+------------------------------+-------------------------------+-------------------------------+-------------------------------+",
+        "| a       | 3                    | 2                           | 2                            | 2                            | 2                            | 2                            | 2                             | 2                             | 2                             |",
+        "| b       | 1                    | 1                           | 1                            | 1                            | 1                            | 1                            | 1                             | 1                             | 1                             |",
+        "| c       | 3                    | 2                           | 2                            | 2                            | 2                            | 2                            | 2                             | 2                             | 2                             |",
+        "+---------+----------------------+-----------------------------+------------------------------+------------------------------+------------------------------+------------------------------+-------------------------------+-------------------------------+-------------------------------+",
+    ];
+    assert_batches_sorted_eq!(expected, &results);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn count_distinct_integers_aggregated_multiple_partitions() -> Result<()> {
+    let partitions = vec![
+        // The first member of each tuple will be the value for the
+        // `c_group` column, and the second member will be the value for
+        // each of the int/uint fields.
+        vec![("a", 1), ("a", 1), ("a", 2), ("b", 9), ("c", 9)],
+        vec![("a", 1), ("a", 3), ("b", 8), ("b", 9), ("b", 10), ("b", 11)],
+    ];
+
+    let results = run_count_distinct_integers_aggregated_scenario(partitions).await?;
+
+    let expected = vec![
+        "+---------+----------------------+-----------------------------+------------------------------+------------------------------+------------------------------+------------------------------+-------------------------------+-------------------------------+-------------------------------+",
+        "| c_group | COUNT(test.c_uint64) | COUNT(DISTINCT test.c_int8) | COUNT(DISTINCT test.c_int16) | COUNT(DISTINCT test.c_int32) | COUNT(DISTINCT test.c_int64) | COUNT(DISTINCT test.c_uint8) | COUNT(DISTINCT test.c_uint16) | COUNT(DISTINCT test.c_uint32) | COUNT(DISTINCT test.c_uint64) |",
+        "+---------+----------------------+-----------------------------+------------------------------+------------------------------+------------------------------+------------------------------+-------------------------------+-------------------------------+-------------------------------+",
+        "| a       | 5                    | 3                           | 3                            | 3                            | 3                            | 3                            | 3                             | 3                             | 3                             |",
+        "| b       | 5                    | 4                           | 4                            | 4                            | 4                            | 4                            | 4                             | 4                             | 4                             |",
+        "| c       | 1                    | 1                           | 1                            | 1                            | 1                            | 1                            | 1                             | 1                             | 1                             |",
+        "+---------+----------------------+-----------------------------+------------------------------+------------------------------+------------------------------+------------------------------+-------------------------------+-------------------------------+-------------------------------+",
+    ];
+    assert_batches_sorted_eq!(expected, &results);
+
+    Ok(())
 }

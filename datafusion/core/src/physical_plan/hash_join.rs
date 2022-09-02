@@ -38,7 +38,7 @@ use async_trait::async_trait;
 use futures::{Stream, StreamExt, TryStreamExt};
 use tokio::sync::Mutex;
 
-use arrow::array::Array;
+use arrow::array::{new_null_array, Array};
 use arrow::datatypes::DataType;
 use arrow::datatypes::{Schema, SchemaRef};
 use arrow::error::Result as ArrowResult;
@@ -263,22 +263,17 @@ impl ExecutionPlan for HashJoinExec {
     }
 
     fn with_new_children(
-        &self,
+        self: Arc<Self>,
         children: Vec<Arc<dyn ExecutionPlan>>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
-        match children.len() {
-            2 => Ok(Arc::new(HashJoinExec::try_new(
-                children[0].clone(),
-                children[1].clone(),
-                self.on.clone(),
-                &self.join_type,
-                self.mode,
-                &self.null_equals_null,
-            )?)),
-            _ => Err(DataFusionError::Internal(
-                "HashJoinExec wrong number of children".to_string(),
-            )),
-        }
+        Ok(Arc::new(HashJoinExec::try_new(
+            children[0].clone(),
+            children[1].clone(),
+            self.on.clone(),
+            &self.join_type,
+            self.mode,
+            &self.null_equals_null,
+        )?))
     }
 
     fn output_partitioning(&self) -> Partitioning {
@@ -598,11 +593,24 @@ fn build_batch_from_indices(
         let array = match column_index.side {
             JoinSide::Left => {
                 let array = left.column(column_index.index);
-                compute::take(array.as_ref(), &left_indices, None)?
+                if array.is_empty() || left_indices.null_count() == left_indices.len() {
+                    // Outer join would generate a null index when finding no match at our side.
+                    // Therefore, it's possible we are empty but need to populate an n-length null array,
+                    // where n is the length of the index array.
+                    assert_eq!(left_indices.null_count(), left_indices.len());
+                    new_null_array(array.data_type(), left_indices.len())
+                } else {
+                    compute::take(array.as_ref(), &left_indices, None)?
+                }
             }
             JoinSide::Right => {
                 let array = right.column(column_index.index);
-                compute::take(array.as_ref(), &right_indices, None)?
+                if array.is_empty() || right_indices.null_count() == right_indices.len() {
+                    assert_eq!(right_indices.null_count(), right_indices.len());
+                    new_null_array(array.data_type(), right_indices.len())
+                } else {
+                    compute::take(array.as_ref(), &right_indices, None)?
+                }
             }
         };
         columns.push(array);
