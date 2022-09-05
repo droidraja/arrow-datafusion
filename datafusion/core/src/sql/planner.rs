@@ -1844,7 +1844,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                                         name,
                                     }))
                                 },
-                                Err(e) => {
+                                Err(_) => {
                                     let search_term = format!(".{}.{}", relation, name);
                                     if schema.fields().iter().any(|f| f.qualified_name().as_str().ends_with(&search_term)) {
                                         // this could probably be improved but here we handle the case
@@ -1861,7 +1861,11 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                                             key: Box::new(Expr::Literal(ScalarValue::Utf8(Some(name)))),
                                         })
                                     } else {
-                                        Err(e)
+                                        // This is a fix for Sort with relation. See filter_idents_test test for more information.
+                                        Ok(Expr::Column(Column {
+                                            relation: Some(relation),
+                                            name,
+                                        }))
                                     }
                                 }
                             }
