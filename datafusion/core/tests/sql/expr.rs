@@ -516,6 +516,14 @@ async fn binary_bitwise_shift() -> Result<()> {
 }
 
 #[tokio::test]
+async fn test_nullif() -> Result<()> {
+    // both arguments are scalars
+    test_expression!("NULLIF(3.0, 0)", "3");
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_interval_expressions() -> Result<()> {
     // day nano intervals
     test_expression!(

@@ -87,6 +87,17 @@ pub fn nullif_func(args: &[ColumnarValue]) -> Result<ColumnarValue> {
     }
 
     match (lhs, rhs) {
+        (ColumnarValue::Scalar(lhs), ColumnarValue::Scalar(rhs)) => {
+            let left = lhs.to_array_of_size(1);
+            let right = rhs.to_array_of_size(1);
+
+            // Get args0 == args1 evaluated and produce a boolean array
+            let cond_array = binary_array_op!(left, right, eq)?;
+
+            // Now, invoke nullif on the result
+            let array = primitive_bool_array_op!(left, *cond_array, nullif)?;
+            Ok(ColumnarValue::Array(array))
+        }
         (ColumnarValue::Array(lhs), ColumnarValue::Scalar(rhs)) => {
             let cond_array = binary_array_op_scalar!(lhs, rhs.clone(), eq).unwrap()?;
 
