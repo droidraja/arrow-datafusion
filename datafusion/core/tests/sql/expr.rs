@@ -519,6 +519,10 @@ async fn binary_bitwise_shift() -> Result<()> {
 async fn test_nullif() -> Result<()> {
     // both arguments are scalars
     test_expression!("NULLIF(3.0, 0)", "3");
+    test_expression!("NULLIF(3, 3)", "NULL");
+    test_expression!("NULLIF(3, 4)", "3");
+    test_expression!("NULLIF('test', 'test')", "NULL");
+    test_expression!("NULLIF('test1', 'test2')", "test1");
 
     Ok(())
 }
