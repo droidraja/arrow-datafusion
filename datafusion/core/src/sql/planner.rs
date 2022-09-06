@@ -1836,26 +1836,38 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                                 }))
                             }
 
-                            if let Some(field) = schema.fields().iter().find(|f| f.name().eq(&relation)) {
-                                if field.qualifier() == Some(&name) {
-                                    // table.column identifier
+                            match schema.field_with_qualified_name(&relation, &name) {
+                                Ok(_) => {
+                                    // found an exact match on a qualified name so this is a table.column identifier
                                     Ok(Expr::Column(Column {
                                         relation: Some(relation),
                                         name,
                                     }))
-                                } else {
-                                    // Access to a field of a column which is a structure, example: SELECT my_struct.key
-                                    Ok(Expr::GetIndexedField {
-                                        expr: Box::new(Expr::Column(field.qualified_column())),
-                                        key: Box::new(Expr::Literal(ScalarValue::Utf8(Some(name)))),
-                                    })
+                                },
+                                Err(_) => {
+                                    let search_term = format!(".{}.{}", relation, name);
+                                    if schema.fields().iter().any(|f| f.qualified_name().as_str().ends_with(&search_term)) {
+                                        // this could probably be improved but here we handle the case
+                                        // where the qualifier is only a partial qualifier such as when
+                                        // referencing "t1.foo" when the available field is "public.t1.foo"
+                                        Ok(Expr::Column(Column {
+                                            relation: Some(relation),
+                                            name,
+                                        }))
+                                    } else if let Some(field) = schema.fields().iter().find(|f| f.name().eq(&relation)) {
+                                        // Access to a field of a column which is a structure, example: SELECT my_struct.key
+                                        Ok(Expr::GetIndexedField {
+                                            expr: Box::new(Expr::Column(field.qualified_column())),
+                                            key: Box::new(Expr::Literal(ScalarValue::Utf8(Some(name)))),
+                                        })
+                                    } else {
+                                        // This is a fix for Sort with relation. See filter_idents_test test for more information.
+                                        Ok(Expr::Column(Column {
+                                            relation: Some(relation),
+                                            name,
+                                        }))
+                                    }
                                 }
-                            } else {
-                                // table.column identifier
-                                Ok(Expr::Column(Column {
-                                    relation: Some(relation),
-                                    name,
-                                }))
                             }
                         }
                         _ => Err(DataFusionError::NotImplemented(format!(
