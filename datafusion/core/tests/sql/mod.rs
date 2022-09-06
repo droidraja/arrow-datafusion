@@ -76,6 +76,15 @@ macro_rules! test_expression {
     };
 }
 
+macro_rules! test_select {
+    ($SQL:expr, $EXPECTED:expr) => {
+        let ctx = SessionContext::new();
+        let sql = format!("SELECT {}", $SQL);
+        let actual = execute(&ctx, sql.as_str()).await;
+        assert_eq!(actual, $EXPECTED);
+    };
+}
+
 pub mod aggregates;
 #[cfg(feature = "avro")]
 pub mod avro;

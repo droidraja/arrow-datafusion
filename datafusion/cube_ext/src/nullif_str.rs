@@ -44,13 +44,19 @@ macro_rules! null_if_equal {
 }
 
 pub fn nullif_func_str(args: &[ColumnarValue]) -> Result<ColumnarValue> {
-    let (lhs, rhs) = (&args[0], &args[1]);
-    let (left_arr, right_arr) = match (lhs, rhs) {
-        (ColumnarValue::Array(lhs), _) => (lhs, rhs.clone().into_array(lhs.len())),
-        _ => {
-            return Err(DataFusionError::NotImplemented(
-                "nullif_str does not support a literal as first argument".to_string(),
-            ))
+    let (left_arr, right_arr) = match (&args[0], &args[1]) {
+        (ColumnarValue::Scalar(lhs), ColumnarValue::Scalar(rhs)) => {
+            (lhs.to_array(), rhs.to_array())
+        }
+        (ColumnarValue::Array(lhs), ColumnarValue::Array(rhs)) => {
+            (lhs.clone(), rhs.clone())
+        }
+        // align
+        (ColumnarValue::Array(lhs), ColumnarValue::Scalar(rhs)) => {
+            (lhs.clone(), rhs.clone().to_array_of_size(lhs.len()))
+        }
+        (ColumnarValue::Scalar(lhs), ColumnarValue::Array(rhs)) => {
+            (lhs.clone().to_array_of_size(rhs.len()), rhs.clone())
         }
     };
 

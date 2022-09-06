@@ -87,11 +87,15 @@ pub fn nullif_func(args: &[ColumnarValue]) -> Result<ColumnarValue> {
     }
 
     match (lhs, rhs) {
-        (ColumnarValue::Array(lhs), ColumnarValue::Scalar(rhs)) => {
-            let cond_array = binary_array_op_scalar!(lhs, rhs.clone(), eq).unwrap()?;
+        (ColumnarValue::Scalar(lhs), ColumnarValue::Scalar(rhs)) => {
+            let left = lhs.to_array_of_size(1);
+            let right = rhs.to_array_of_size(1);
 
-            let array = primitive_bool_array_op!(lhs, *cond_array, nullif)?;
+            // Get args0 == args1 evaluated and produce a boolean array
+            let cond_array = binary_array_op!(left, right, eq)?;
 
+            // Now, invoke nullif on the result
+            let array = primitive_bool_array_op!(left, *cond_array, nullif)?;
             Ok(ColumnarValue::Array(array))
         }
         (ColumnarValue::Array(lhs), ColumnarValue::Array(rhs)) => {
@@ -102,9 +106,24 @@ pub fn nullif_func(args: &[ColumnarValue]) -> Result<ColumnarValue> {
             let array = primitive_bool_array_op!(lhs, *cond_array, nullif)?;
             Ok(ColumnarValue::Array(array))
         }
-        _ => Err(DataFusionError::NotImplemented(
-            "nullif does not support a literal as first argument".to_string(),
-        )),
+        // align
+        (ColumnarValue::Array(lhs), ColumnarValue::Scalar(rhs)) => {
+            let cond_array = binary_array_op_scalar!(lhs, rhs.clone(), eq).unwrap()?;
+
+            let array = primitive_bool_array_op!(lhs, *cond_array, nullif)?;
+
+            Ok(ColumnarValue::Array(array))
+        }
+        (ColumnarValue::Scalar(lhs), ColumnarValue::Array(rhs)) => {
+            let lhs = lhs.to_array_of_size(rhs.len());
+
+            // Get args0 == args1 evaluated and produce a boolean array
+            let cond_array = binary_array_op!(lhs, rhs, eq)?;
+
+            // Now, invoke nullif on the result
+            let array = primitive_bool_array_op!(lhs, *cond_array, nullif)?;
+            Ok(ColumnarValue::Array(array))
+        }
     }
 }
 

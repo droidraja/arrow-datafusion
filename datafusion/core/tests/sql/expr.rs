@@ -516,6 +516,38 @@ async fn binary_bitwise_shift() -> Result<()> {
 }
 
 #[tokio::test]
+async fn test_nullif() -> Result<()> {
+    // both arguments are scalars
+    test_expression!("NULLIF(3.0, 0)", "3");
+    test_expression!("NULLIF(3, 3)", "NULL");
+    test_expression!("NULLIF(3, 4)", "3");
+    test_expression!("NULLIF('test', 'test')", "NULL");
+    test_expression!("NULLIF('test1', 'test2')", "test1");
+
+    // align test for utf8
+    test_select!(
+        "NULLIF('test1', r.a) FROM (SELECT 'test1' as a UNION ALL SELECT 'test2' as a) as r ORDER BY r.a",
+        vec![vec!["NULL"], vec!["test1"]]
+    );
+    test_select!(
+        "NULLIF(r.a, 'test1') FROM (SELECT 'test1' as a UNION ALL SELECT 'test2' as a) as r ORDER BY r.a",
+        vec![vec!["NULL"], vec!["test2"]]
+    );
+
+    // align test for simple int64
+    test_select!(
+        "NULLIF(1, r.a) FROM (SELECT 1 as a UNION ALL SELECT 2 as a) as r ORDER BY r.a",
+        vec![vec!["NULL"], vec!["1"]]
+    );
+    test_select!(
+        "NULLIF(r.a, 1) FROM (SELECT 1 as a UNION ALL SELECT 2 as a) as r ORDER BY r.a",
+        vec![vec!["NULL"], vec!["2"]]
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_interval_expressions() -> Result<()> {
     // day nano intervals
     test_expression!(
