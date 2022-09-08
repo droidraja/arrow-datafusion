@@ -2233,6 +2233,11 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                 )))
             }
 
+            // TODO: To support AtTimeZone when DF supports timezones
+            SQLExpr::AtTimeZone { timestamp, .. } => {
+                self.sql_expr_to_logical_expr(*timestamp, schema)
+            }
+
             _ => Err(DataFusionError::NotImplemented(format!(
                 "Unsupported ast node {:?} in sqltorel",
                 sql
@@ -4700,6 +4705,13 @@ mod tests {
         \n  Projection: #person.id\
         \n    Filter: #person.id > Int64(100)\
         \n      TableScan: person projection=None";
+        quick_test(sql, expected);
+    }
+
+    #[test]
+    fn test_at_time_zone() {
+        let sql = "select CAST(158412331400600000 as timestamp) AT TIME ZONE 'Etc/UTC';";
+        let expected = "Projection: CAST(Int64(158412331400600000) AS Timestamp(Nanosecond, None))\n  EmptyRelation";
         quick_test(sql, expected);
     }
 }
