@@ -868,11 +868,18 @@ impl LogicalPlanBuilder {
     /// value of the `group_expr`;
     pub fn aggregate(
         &self,
-        group_expr: impl IntoIterator<Item = impl Into<Expr>>,
-        aggr_expr: impl IntoIterator<Item = impl Into<Expr>>,
+        group_exprs: impl IntoIterator<Item = impl Into<Expr>>,
+        aggr_exprs: impl IntoIterator<Item = impl Into<Expr>>,
     ) -> Result<Self> {
-        let group_expr = normalize_cols(group_expr, &self.plan)?;
-        let aggr_expr = normalize_cols(aggr_expr, &self.plan)?;
+        let mut group_expr: Vec<Expr> = vec![];
+        normalize_cols(group_exprs, &self.plan)?
+            .iter()
+            .for_each(|e| {
+                if !group_expr.contains(e) {
+                    group_expr.push(e.clone());
+                }
+            });
+        let aggr_expr = normalize_cols(aggr_exprs, &self.plan)?;
         let all_expr = group_expr.iter().chain(aggr_expr.iter());
         validate_unique_names("Aggregations", all_expr.clone(), self.plan.schema())?;
         let aggr_schema = DFSchema::new_with_metadata(

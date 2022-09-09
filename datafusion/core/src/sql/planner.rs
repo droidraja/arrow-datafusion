@@ -3279,6 +3279,17 @@ mod tests {
     }
 
     #[test]
+    fn select_aggregate_with_group_by_with_two_same_exprs() {
+        let sql = "SELECT first_name as name, first_name as nickname, 1 as first_num, 1 as second_num
+                   FROM person
+                   GROUP BY 1, 2, 3, 4";
+        let expected = "Projection: #person.first_name AS name, #person.first_name AS nickname, #Int64(1) AS first_num, #Int64(1) AS second_num\
+                        \n  Aggregate: groupBy=[[#person.first_name, Int64(1)]], aggr=[[]]\
+                        \n    TableScan: person projection=None";
+        quick_test(sql, expected);
+    }
+
+    #[test]
     fn select_binary_expr() {
         let sql = "SELECT age + salary from person";
         let expected = "Projection: #person.age + #person.salary\
