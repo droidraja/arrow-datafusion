@@ -209,3 +209,33 @@ async fn sort_empty() -> Result<()> {
     assert_eq!(results.len(), 0);
     Ok(())
 }
+
+#[tokio::test]
+async fn sort_with_autocast() -> Result<()> {
+    let ctx = SessionContext::new();
+    let sql = "select 1.1 union all select 1 order by 1";
+    let actual = execute_to_batches(&ctx, sql).await;
+    let expected = vec![
+        "+--------------+",
+        "| Float64(1.1) |",
+        "+--------------+",
+        "| 1            |",
+        "| 1.1          |",
+        "+--------------+",
+    ];
+    assert_batches_eq!(expected, &actual);
+
+    let sql = "select 1.1 union all select NULL order by 1";
+    let actual = execute_to_batches(&ctx, sql).await;
+    let expected = vec![
+        "+--------------+",
+        "| Float64(1.1) |",
+        "+--------------+",
+        "| 1.1          |",
+        "|              |",
+        "+--------------+",
+    ];
+    assert_batches_eq!(expected, &actual);
+
+    Ok(())
+}

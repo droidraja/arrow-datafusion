@@ -22,7 +22,7 @@ use crate::error::{DataFusionError, Result};
 use crate::execution::context::TaskContext;
 use crate::physical_plan::metrics::MemTrackingMetrics;
 use crate::physical_plan::{ColumnStatistics, ExecutionPlan, Statistics};
-use arrow::compute::concat;
+use arrow::compute::{cast, concat};
 use arrow::datatypes::{Schema, SchemaRef};
 use arrow::error::ArrowError;
 use arrow::error::Result as ArrowResult;
@@ -108,13 +108,25 @@ pub(crate) fn combine_batches(
             .fields()
             .iter()
             .enumerate()
-            .map(|(i, _)| {
-                concat(
-                    &batches
+            .map(|(i, f)| {
+                if batches
+                    .iter()
+                    .find(|b| b.column(i).data_type() != f.data_type())
+                    .is_some()
+                {
+                    let vals = batches
                         .iter()
-                        .map(|batch| batch.column(i).as_ref())
-                        .collect::<Vec<_>>(),
-                )
+                        .map(|batch| cast(batch.column(i), f.data_type()).ok().unwrap())
+                        .collect::<Vec<_>>();
+                    concat(&vals.iter().map(|val| val.as_ref()).collect::<Vec<_>>())
+                } else {
+                    concat(
+                        &batches
+                            .iter()
+                            .map(|batch| batch.column(i).as_ref())
+                            .collect::<Vec<_>>(),
+                    )
+                }
             })
             .collect::<ArrowResult<Vec<_>>>()?;
         Ok(Some(RecordBatch::try_new(schema.clone(), columns)?))
