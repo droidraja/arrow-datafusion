@@ -66,6 +66,7 @@ datafusion-jit = { path = "../jit", version = "7.0.0", optional = true }
 datafusion-physical-expr = { path = "../physical-expr", version = "7.0.0" }
 futures = "0.3"
 hashbrown = { version = "0.12", features = ["raw"] }
+itertools = "0.10"
 lazy_static = { version = "^1.4.0" }
 log = "^0.4"
 num-traits = { version = "0.2", optional = true }

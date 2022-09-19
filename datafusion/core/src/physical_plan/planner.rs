@@ -1687,8 +1687,6 @@ mod tests {
             col("c1").and(col("c1")),
             // u8 AND u8
             col("c3").and(col("c3")),
-            // utf8 = u32
-            col("c1").eq(col("c2")),
             // u32 AND bool
             col("c2").and(bool_expr),
             // utf8 LIKE u32

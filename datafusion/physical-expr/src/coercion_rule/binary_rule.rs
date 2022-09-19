@@ -104,7 +104,10 @@ fn bitwise_coercion(left_type: &DataType, right_type: &DataType) -> Option<DataT
     }
 }
 
-fn comparison_eq_coercion(lhs_type: &DataType, rhs_type: &DataType) -> Option<DataType> {
+pub fn comparison_eq_coercion(
+    lhs_type: &DataType,
+    rhs_type: &DataType,
+) -> Option<DataType> {
     // can't compare dictionaries directly due to
     // https://github.com/apache/arrow-rs/issues/1201
     if lhs_type == rhs_type && !is_dictionary(lhs_type) {
@@ -115,6 +118,20 @@ fn comparison_eq_coercion(lhs_type: &DataType, rhs_type: &DataType) -> Option<Da
         .or_else(|| string_boolean_equality_coercion(lhs_type, rhs_type))
         .or_else(|| dictionary_coercion(lhs_type, rhs_type))
         .or_else(|| temporal_coercion(lhs_type, rhs_type))
+        .or_else(|| string_coercion(lhs_type, rhs_type))
+        .or_else(|| null_coercion(lhs_type, rhs_type))
+        .or_else(|| string_numeric_coercion(lhs_type, rhs_type))
+}
+
+fn string_numeric_coercion(lhs_type: &DataType, rhs_type: &DataType) -> Option<DataType> {
+    use arrow::datatypes::DataType::*;
+    match (lhs_type, rhs_type) {
+        (Utf8, _) if DataType::is_numeric(rhs_type) => Some(Utf8),
+        (LargeUtf8, _) if DataType::is_numeric(rhs_type) => Some(LargeUtf8),
+        (_, Utf8) if DataType::is_numeric(lhs_type) => Some(Utf8),
+        (_, LargeUtf8) if DataType::is_numeric(lhs_type) => Some(LargeUtf8),
+        _ => None,
+    }
 }
 
 fn comparison_order_coercion(
@@ -567,6 +584,28 @@ pub fn interval_coercion(
             }
             _ => None,
         },
+        _ => None,
+    }
+}
+
+/// coercion rules from NULL type. Since NULL can be casted to most of types in arrow,
+/// either lhs or rhs is NULL, if NULL can be casted to type of the other side, the coecion is valid.
+fn null_coercion(lhs_type: &DataType, rhs_type: &DataType) -> Option<DataType> {
+    match (lhs_type, rhs_type) {
+        (DataType::Null, _) => {
+            if can_cast_types(&DataType::Null, rhs_type) {
+                Some(rhs_type.clone())
+            } else {
+                None
+            }
+        }
+        (_, DataType::Null) => {
+            if can_cast_types(&DataType::Null, lhs_type) {
+                Some(lhs_type.clone())
+            } else {
+                None
+            }
+        }
         _ => None,
     }
 }
