@@ -23,6 +23,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-arrow = { git = 'https://github.com/cube-js/arrow-rs.git', rev = "0bc721700352afe8267dba82388b81deffc24095", features = ["prettyprint"] }
+arrow = { git = 'https://github.com/cube-js/arrow-rs.git', rev = "0a23deccf4e589768177fbaa7a3745c8b25f63c9", features = ["prettyprint"] }
 env_logger = "0.9.0"
 rand = "0.8"
