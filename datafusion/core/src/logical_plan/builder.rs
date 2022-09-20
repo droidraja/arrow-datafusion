@@ -36,6 +36,7 @@ use arrow::{
     record_batch::RecordBatch,
 };
 use datafusion_data_access::object_store::ObjectStore;
+use datafusion_physical_expr::coercion_rule::binary_rule::comparison_eq_coercion;
 use std::convert::TryFrom;
 use std::iter;
 use std::{
@@ -43,7 +44,7 @@ use std::{
     sync::Arc,
 };
 
-use super::dfschema::ToDFSchema;
+use super::{dfschema::ToDFSchema, expr_rewriter::coerce_plan_expr_for_schema};
 use super::{exprlist_to_fields, Expr, JoinConstraint, JoinType, LogicalPlan, PlanType};
 use crate::logical_plan::{
     columnize_expr, normalize_col, normalize_cols, rewrite_sort_cols_by_aggs, Column,
@@ -1069,39 +1070,59 @@ pub fn union_with_alias(
     right_plan: LogicalPlan,
     alias: Option<String>,
 ) -> Result<LogicalPlan> {
-    let union_schema = left_plan.schema().clone();
-    let inputs_iter = vec![left_plan, right_plan]
+    let union_schema = (0..left_plan.schema().fields().len())
+        .map(|i| {
+            let left_field = left_plan.schema().field(i);
+            let right_field = right_plan.schema().field(i);
+            let nullable = left_field.is_nullable() || right_field.is_nullable();
+            let data_type =
+                comparison_eq_coercion(left_field.data_type(), right_field.data_type())
+                    .ok_or_else(|| {
+                        DataFusionError::Plan(format!(
+                    "UNION Column {} (type: {}) is not compatible with column {} (type: {})",
+                    right_field.name(),
+                    right_field.data_type(),
+                    left_field.name(),
+                    left_field.data_type()
+                ))
+                    })?;
+
+            Ok(DFField::new(
+                alias.as_deref(),
+                left_field.name(),
+                data_type,
+                nullable,
+            ))
+        })
+        .collect::<Result<Vec<_>>>()?
+        .to_dfschema()?;
+
+    let inputs = vec![left_plan, right_plan]
         .into_iter()
         .flat_map(|p| match p {
             LogicalPlan::Union(Union { inputs, .. }) => inputs,
             x => vec![x],
-        });
-
-    inputs_iter
-        .clone()
-        .skip(1)
-        .try_for_each(|input_plan| -> Result<()> {
-            union_schema.check_arrow_schema_type_compatible(
-                &((**input_plan.schema()).clone().into()),
-            )
-        })?;
-
-    let inputs = inputs_iter
-        .map(|p| match p {
-            LogicalPlan::Projection(Projection {
-                expr, input, alias, ..
-            }) => {
-                project_with_column_index_alias(expr, input, union_schema.clone(), alias)
-                    .unwrap()
-            }
-            x => x,
         })
-        .collect::<Vec<_>>();
+        .map(|p| {
+            let plan = coerce_plan_expr_for_schema(&p, &union_schema)?;
+            match plan {
+                LogicalPlan::Projection(Projection {
+                    expr, input, alias, ..
+                }) => Ok(project_with_column_index_alias(
+                    expr.to_vec(),
+                    input,
+                    Arc::new(union_schema.clone()),
+                    alias,
+                )?),
+                x => Ok(x),
+            }
+        })
+        .collect::<Result<Vec<_>>>()?;
+
     if inputs.is_empty() {
         return Err(DataFusionError::Plan("Empty UNION".to_string()));
     }
 
-    let union_schema = (**inputs[0].schema()).clone();
     let union_schema = Arc::new(match alias {
         Some(ref alias) => union_schema.replace_qualifier(alias.as_str()),
         None => union_schema.strip_qualifiers(),

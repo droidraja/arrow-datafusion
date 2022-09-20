@@ -17,10 +17,11 @@
 
 //! Expression rewriter
 
-use super::Expr;
+use super::{Expr, ExprSchemable};
 use crate::logical_plan::plan::{Aggregate, Projection};
 use crate::logical_plan::DFSchema;
 use crate::logical_plan::LogicalPlan;
+use crate::optimizer::utils::from_plan;
 use crate::sql::utils::{
     extract_aliased_expr_names, rebase_expr, resolve_exprs_to_aliases,
 };
@@ -489,6 +490,40 @@ pub fn rewrite_udtfs_to_columns(exprs: Vec<Expr>, schema: DFSchema) -> Vec<Expr>
                 .unwrap()
         })
         .collect::<Vec<_>>()
+}
+
+/// Returns plan with expressions coerced to types compatible with
+/// schema types
+pub fn coerce_plan_expr_for_schema(
+    plan: &LogicalPlan,
+    schema: &DFSchema,
+) -> Result<LogicalPlan> {
+    let new_expr = plan
+        .expressions()
+        .into_iter()
+        .enumerate()
+        .map(|(i, expr)| {
+            let new_type = schema.field(i).data_type();
+            if plan.schema().field(i).data_type() != schema.field(i).data_type() {
+                match (plan, &expr) {
+                    (
+                        LogicalPlan::Projection(Projection { input, .. }),
+                        Expr::Alias(e, alias),
+                    ) => Ok(Expr::Alias(
+                        Box::new(e.clone().cast_to(new_type, input.schema())?),
+                        alias.clone(),
+                    )),
+                    _ => expr.cast_to(new_type, plan.schema()),
+                }
+            } else {
+                Ok(expr)
+            }
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    let new_inputs = plan.inputs().into_iter().cloned().collect::<Vec<_>>();
+
+    from_plan(plan, &new_expr, &new_inputs)
 }
 
 #[cfg(test)]
