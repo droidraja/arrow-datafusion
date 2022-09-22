@@ -505,6 +505,7 @@ fn optimize_plan(
         | LogicalPlan::DropTable(_)
         | LogicalPlan::CrossJoin(_)
         | LogicalPlan::TableUDFs(_)
+        | LogicalPlan::Distinct(_)
         | LogicalPlan::Extension { .. } => {
             let expr = plan.expressions();
             // collect all required columns by this plan

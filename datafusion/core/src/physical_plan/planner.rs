@@ -24,14 +24,15 @@ use super::{
     hash_join::PartitionMode, udaf, union::UnionExec, values::ValuesExec, windows,
 };
 use crate::execution::context::{ExecutionProps, SessionState};
+use crate::logical_plan::builder::expand_wildcard;
 use crate::logical_plan::plan::{
     Aggregate, EmptyRelation, Filter, Join, Projection, Sort, Subquery, TableScan,
     TableUDFs, Window,
 };
 use crate::logical_plan::{
-    unalias, unnormalize_cols, CrossJoin, DFSchema, Expr, LogicalPlan, Operator,
-    Partitioning as LogicalPartitioning, PlanType, Repartition, ToStringifiedPlan, Union,
-    UserDefinedLogicalNode,
+    unalias, unnormalize_cols, CrossJoin, DFSchema, Distinct, Expr, LogicalPlan,
+    Operator, Partitioning as LogicalPartitioning, PlanType, Repartition,
+    ToStringifiedPlan, Union, UserDefinedLogicalNode,
 };
 use crate::logical_plan::{Limit, Values};
 use crate::physical_optimizer::optimizer::PhysicalOptimizerRule;
@@ -615,6 +616,18 @@ impl DefaultPhysicalPlanner {
                             physical_exprs,
                             input_exec,
                         )?))
+                }
+                LogicalPlan::Distinct(Distinct {input}) => {
+                    // Convert distinct to groupby with no aggregations
+                    let group_expr = expand_wildcard(input.schema(), input)?;
+                    let aggregate =  LogicalPlan::Aggregate(Aggregate {
+                            input: input.clone(),
+                            group_expr,
+                            aggr_expr: vec![],
+                            schema: input.schema().clone()
+                        }
+                    );
+                    Ok(self.create_initial_plan(&aggregate, session_state).await?)
                 }
                 LogicalPlan::Projection(Projection { input, expr, .. }) => {
                     let input_exec = self.create_initial_plan(input, session_state).await?;

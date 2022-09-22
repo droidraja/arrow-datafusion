@@ -26,9 +26,9 @@ use crate::optimizer::optimizer::OptimizerConfig;
 
 use crate::logical_plan::builder::build_table_udf_schema;
 use crate::logical_plan::{
-    build_join_schema, Column, CreateMemoryTable, DFSchemaRef, Expr, ExprVisitable,
-    Limit, LogicalPlan, LogicalPlanBuilder, Operator, Partitioning, Recursion,
-    Repartition, Union, Values,
+    build_join_schema, Column, CreateMemoryTable, DFSchemaRef, Distinct, Expr,
+    ExprVisitable, Limit, LogicalPlan, LogicalPlanBuilder, Operator, Partitioning,
+    Recursion, Repartition, Union, Values,
 };
 use crate::prelude::lit;
 use crate::scalar::ScalarValue;
@@ -264,6 +264,9 @@ pub fn from_plan(
                 alias: alias.clone(),
             }))
         }
+        LogicalPlan::Distinct(Distinct { .. }) => Ok(LogicalPlan::Distinct(Distinct {
+            input: Arc::new(inputs[0].clone()),
+        })),
         LogicalPlan::Analyze(a) => {
             assert!(expr.is_empty());
             assert_eq!(inputs.len(), 1);
