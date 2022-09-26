@@ -196,6 +196,8 @@ fn get_comparison_common_decimal_type(
         DataType::Int16 => DataType::Decimal(5, 0),
         DataType::Int32 => DataType::Decimal(10, 0),
         DataType::Int64 => DataType::Decimal(20, 0),
+        DataType::UInt32 => DataType::Decimal(10, 0),
+        DataType::UInt64 => DataType::Decimal(20, 0),
         DataType::Float32 => DataType::Decimal(14, 7),
         DataType::Float64 => DataType::Decimal(30, 15),
         _ => {
@@ -220,6 +222,8 @@ fn coerce_numeric_type_to_decimal(numeric_type: &DataType) -> Option<DataType> {
         DataType::Int16 => Some(DataType::Decimal(5, 0)),
         DataType::Int32 => Some(DataType::Decimal(10, 0)),
         DataType::Int64 => Some(DataType::Decimal(20, 0)),
+        DataType::UInt32 => Some(DataType::Decimal(10, 0)),
+        DataType::UInt64 => Some(DataType::Decimal(20, 0)),
         // TODO if we convert the floating-point data to the decimal type, it maybe overflow.
         DataType::Float32 => Some(DataType::Decimal(14, 7)),
         DataType::Float64 => Some(DataType::Decimal(30, 15)),
