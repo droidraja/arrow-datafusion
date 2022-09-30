@@ -30,9 +30,9 @@ use crate::logical_plan::EmptyRelation;
 use crate::logical_plan::Expr::Alias;
 use crate::logical_plan::{
     and, builder::expand_qualified_wildcard, builder::expand_wildcard, col, lit,
-    normalize_col, rewrite_udtfs_to_columns, union_with_alias, Column, CreateMemoryTable,
-    DFSchema, DFSchemaRef, DropTable, Expr, LogicalPlan, LogicalPlanBuilder, Operator,
-    PlanType, ToDFSchema, ToStringifiedPlan,
+    normalize_col, rewrite_udtfs_to_columns, Column, CreateMemoryTable, DFSchema,
+    DFSchemaRef, DropTable, Expr, LogicalPlan, LogicalPlanBuilder, Operator, PlanType,
+    ToDFSchema, ToStringifiedPlan,
 };
 use crate::optimizer::utils::exprlist_to_columns;
 use crate::prelude::JoinType;
@@ -359,13 +359,12 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                 let left_plan = self.set_expr_to_plan(*left, None, ctes)?;
                 let right_plan = self.set_expr_to_plan(*right, None, ctes)?;
                 match (op, all) {
-                    (SetOperator::Union, true) => {
-                        union_with_alias(left_plan, right_plan, alias)
-                    }
-                    (SetOperator::Union, false) => {
-                        let union_plan = union_with_alias(left_plan, right_plan, alias)?;
-                        LogicalPlanBuilder::from(union_plan).distinct()?.build()
-                    }
+                    (SetOperator::Union, true) => LogicalPlanBuilder::from(left_plan)
+                        .union(right_plan)?
+                        .build(),
+                    (SetOperator::Union, false) => LogicalPlanBuilder::from(left_plan)
+                        .union_distinct(right_plan)?
+                        .build(),
                     (SetOperator::Intersect, true) => {
                         LogicalPlanBuilder::intersect(left_plan, right_plan, true)
                     }
@@ -1174,17 +1173,15 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
             LogicalPlanBuilder::window_plan(plan, window_func_exprs)?
         };
 
-        // process distinct clause
-        let plan = if select.distinct {
-            return LogicalPlanBuilder::from(plan)
-                .aggregate(select_exprs_post_aggr, iter::empty::<Expr>())?
-                .build();
-        } else {
-            plan
-        };
+        // final projection
+        let plan = project_with_alias(plan, select_exprs_post_aggr, alias)?;
 
-        // generate the final projection plan
-        project_with_alias(plan, select_exprs_post_aggr, alias)
+        // process distinct clause
+        if select.distinct {
+            LogicalPlanBuilder::from(plan).distinct()?.build()
+        } else {
+            Ok(plan)
+        }
     }
 
     fn wrap_with_subquery_plan_if_necessary(
@@ -4045,6 +4042,19 @@ mod tests {
 
     #[test]
     fn union() {
+        let sql = "SELECT order_id from orders UNION SELECT order_id FROM orders";
+        let expected = "\
+        Distinct:\
+        \n  Union\
+        \n    Projection: #orders.order_id\
+        \n      TableScan: orders projection=None\
+        \n    Projection: #orders.order_id\
+        \n      TableScan: orders projection=None";
+        quick_test(sql, expected);
+    }
+
+    #[test]
+    fn union_all() {
         let sql = "SELECT order_id from orders UNION ALL SELECT order_id FROM orders";
         let expected = "Union\
             \n  Projection: #orders.order_id\

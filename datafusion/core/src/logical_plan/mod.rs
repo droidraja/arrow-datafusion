@@ -65,9 +65,9 @@ pub use expr_visitor::{ExprVisitable, ExpressionVisitor, Recursion};
 pub use extension::UserDefinedLogicalNode;
 pub use operators::Operator;
 pub use plan::{
-    CreateCatalogSchema, CreateExternalTable, CreateMemoryTable, CrossJoin, DropTable,
-    EmptyRelation, JoinConstraint, JoinType, Limit, LogicalPlan, Partitioning, PlanType,
-    PlanVisitor, Repartition, StringifiedPlan, Subquery, TableScan, ToStringifiedPlan,
-    Union, Values,
+    CreateCatalogSchema, CreateExternalTable, CreateMemoryTable, CrossJoin, Distinct,
+    DropTable, EmptyRelation, JoinConstraint, JoinType, Limit, LogicalPlan, Partitioning,
+    PlanType, PlanVisitor, Repartition, StringifiedPlan, Subquery, TableScan,
+    ToStringifiedPlan, Union, Values,
 };
 pub use registry::FunctionRegistry;

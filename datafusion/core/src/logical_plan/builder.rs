@@ -38,13 +38,12 @@ use arrow::{
 use datafusion_data_access::object_store::ObjectStore;
 use datafusion_physical_expr::coercion_rule::binary_rule::comparison_eq_coercion;
 use std::convert::TryFrom;
-use std::iter;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
 
-use super::{dfschema::ToDFSchema, expr_rewriter::coerce_plan_expr_for_schema};
+use super::{dfschema::ToDFSchema, expr_rewriter::coerce_plan_expr_for_schema, Distinct};
 use super::{exprlist_to_fields, Expr, JoinConstraint, JoinType, LogicalPlan, PlanType};
 use crate::logical_plan::{
     columnize_expr, normalize_col, normalize_cols, rewrite_sort_cols_by_aggs, Column,
@@ -649,18 +648,34 @@ impl LogicalPlanBuilder {
         })))
     }
 
-    /// Apply a union
+    /// Apply a union, preserving duplicate rows
     pub fn union(&self, plan: LogicalPlan) -> Result<Self> {
         Ok(Self::from(union_with_alias(self.plan.clone(), plan, None)?))
     }
 
+    /// Apply a union, removing duplicate rows
+    pub fn union_distinct(&self, plan: LogicalPlan) -> Result<Self> {
+        // unwrap top-level Distincts, to avoid duplication
+        let left_plan = self.plan.clone();
+        let left_plan: LogicalPlan = match left_plan {
+            LogicalPlan::Distinct(Distinct { input }) => (*input).clone(),
+            _ => left_plan,
+        };
+        let right_plan: LogicalPlan = match plan {
+            LogicalPlan::Distinct(Distinct { input }) => (*input).clone(),
+            _ => plan,
+        };
+
+        Ok(Self::from(LogicalPlan::Distinct(Distinct {
+            input: Arc::new(union_with_alias(left_plan, right_plan, None)?),
+        })))
+    }
+
     /// Apply deduplication: Only distinct (different) values are returned)
     pub fn distinct(&self) -> Result<Self> {
-        let projection_expr = expand_wildcard(self.plan.schema(), &self.plan)?;
-        let plan = LogicalPlanBuilder::from(self.plan.clone())
-            .aggregate(projection_expr, iter::empty::<Expr>())?
-            .build()?;
-        Self::from(plan).project(vec![Expr::Wildcard])
+        Ok(Self::from(LogicalPlan::Distinct(Distinct {
+            input: Arc::new(self.plan.clone()),
+        })))
     }
 
     /// Apply a join with on constraint
@@ -1396,6 +1411,57 @@ mod tests {
         \n  TableScan: employee_csv projection=Some([3, 4])\
         \n  TableScan: employee_csv projection=Some([3, 4])\
         \n  TableScan: employee_csv projection=Some([3, 4])";
+
+        assert_eq!(expected, format!("{:?}", plan));
+
+        Ok(())
+    }
+
+    #[test]
+    fn plan_builder_union_distinct_combined_single_union() -> Result<()> {
+        let plan = LogicalPlanBuilder::scan_empty(
+            Some("employee_csv"),
+            &employee_schema(),
+            Some(vec![3, 4]),
+        )?;
+
+        let plan = plan
+            .union_distinct(plan.build()?)?
+            .union_distinct(plan.build()?)?
+            .union_distinct(plan.build()?)?
+            .build()?;
+
+        // output has only one union
+        let expected = "\
+        Distinct:\
+        \n  Union\
+        \n    TableScan: employee_csv projection=Some([3, 4])\
+        \n    TableScan: employee_csv projection=Some([3, 4])\
+        \n    TableScan: employee_csv projection=Some([3, 4])\
+        \n    TableScan: employee_csv projection=Some([3, 4])";
+
+        assert_eq!(expected, format!("{:?}", plan));
+
+        Ok(())
+    }
+
+    #[test]
+    fn plan_builder_simple_distinct() -> Result<()> {
+        let plan = LogicalPlanBuilder::scan_empty(
+            Some("employee_csv"),
+            &employee_schema(),
+            Some(vec![0, 3]),
+        )?
+        .filter(col("state").eq(lit("CO")))?
+        .project(vec![col("id")])?
+        .distinct()?
+        .build()?;
+
+        let expected = "\
+        Distinct:\
+        \n  Projection: #employee_csv.id\
+        \n    Filter: #employee_csv.state = Utf8(\"CO\")\
+        \n      TableScan: employee_csv projection=Some([0, 3])";
 
         assert_eq!(expected, format!("{:?}", plan));
 

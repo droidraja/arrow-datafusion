@@ -249,6 +249,7 @@ fn optimize(
         | LogicalPlan::CreateCatalogSchema(_)
         | LogicalPlan::DropTable(_)
         | LogicalPlan::Subquery(_)
+        | LogicalPlan::Distinct(_)
         | LogicalPlan::Extension { .. } => {
             // apply the optimization to all inputs of the plan
             let expr = plan.expressions();
