@@ -81,7 +81,7 @@ async fn explain_analyze_baseline_metrics() {
     );
     assert_metrics!(
         &formatted,
-        "ProjectionExec: expr=[CAST(COUNT(UInt8(1))",
+        "ProjectionExec: expr=[COUNT(UInt8(1)",
         "metrics=[output_rows=1, elapsed_compute="
     );
     assert_metrics!(

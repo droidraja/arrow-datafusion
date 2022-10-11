@@ -224,7 +224,7 @@ impl Accumulator for DistinctCountAccumulator {
 
     fn evaluate(&self) -> Result<ScalarValue> {
         match &self.count_data_type {
-            DataType::UInt64 => Ok(ScalarValue::UInt64(Some(self.values.len() as u64))),
+            DataType::Int64 => Ok(ScalarValue::Int64(Some(self.values.len() as i64))),
             t => Err(DataFusionError::Internal(format!(
                 "Invalid data type {:?} for count distinct aggregation",
                 t
@@ -370,7 +370,7 @@ mod tests {
         Int64Array, Int8Array, ListArray, UInt16Array, UInt32Array, UInt64Array,
         UInt8Array,
     };
-    use arrow::array::{Int32Builder, ListBuilder, UInt64Builder};
+    use arrow::array::{Int32Builder, Int64Builder, ListBuilder};
     use arrow::datatypes::{DataType, Schema};
     use arrow::record_batch::RecordBatch;
 
@@ -450,7 +450,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![],
             String::from("__col_name__"),
-            DataType::UInt64,
+            DataType::Int64,
         );
 
         let mut accum = agg.create_accumulator()?;
@@ -467,7 +467,7 @@ mod tests {
             data_types.to_vec(),
             vec![],
             String::from("__col_name__"),
-            DataType::UInt64,
+            DataType::Int64,
         );
 
         let mut accum = agg.create_accumulator()?;
@@ -499,7 +499,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![],
             String::from("__col_name__"),
-            DataType::UInt64,
+            DataType::Int64,
         );
 
         let mut accum = agg.create_accumulator()?;
@@ -532,7 +532,7 @@ mod tests {
 
             assert_eq!(states.len(), 1);
             assert_eq!(state_vec, vec![Some(1), Some(2), Some(3)]);
-            assert_eq!(result, ScalarValue::UInt64(Some(3)));
+            assert_eq!(result, ScalarValue::Int64(Some(3)));
 
             Ok(())
         }};
@@ -602,7 +602,7 @@ mod tests {
                 ]
             );
             assert!(state_vec[nan_idx].unwrap_or_default().is_nan());
-            assert_eq!(result, ScalarValue::UInt64(Some(8)));
+            assert_eq!(result, ScalarValue::Int64(Some(8)));
 
             Ok(())
         }};
@@ -660,17 +660,17 @@ mod tests {
 
     #[test]
     fn count_distinct_update_batch_boolean() -> Result<()> {
-        let get_count = |data: BooleanArray| -> Result<(Vec<Option<bool>>, u64)> {
+        let get_count = |data: BooleanArray| -> Result<(Vec<Option<bool>>, i64)> {
             let arrays = vec![Arc::new(data) as ArrayRef];
             let (states, result) = run_update_batch(&arrays)?;
             let mut state_vec = state_to_vec!(&states[0], Boolean, bool).unwrap();
             state_vec.sort();
             let count = match result {
-                ScalarValue::UInt64(c) => c.ok_or_else(|| {
+                ScalarValue::Int64(c) => c.ok_or_else(|| {
                     DataFusionError::Internal("Found None count".to_string())
                 }),
                 scalar => Err(DataFusionError::Internal(format!(
-                    "Found non Uint64 scalar value from count: {}",
+                    "Found non Int64 scalar value from count: {}",
                     scalar
                 ))),
             }?;
@@ -723,7 +723,7 @@ mod tests {
 
         assert_eq!(states.len(), 1);
         assert_eq!(state_to_vec!(&states[0], Int32, i32), Some(vec![]));
-        assert_eq!(result, ScalarValue::UInt64(Some(0)));
+        assert_eq!(result, ScalarValue::Int64(Some(0)));
 
         Ok(())
     }
@@ -736,7 +736,7 @@ mod tests {
 
         assert_eq!(states.len(), 1);
         assert_eq!(state_to_vec!(&states[0], Int32, i32), Some(vec![]));
-        assert_eq!(result, ScalarValue::UInt64(Some(0)));
+        assert_eq!(result, ScalarValue::Int64(Some(0)));
 
         Ok(())
     }
@@ -759,7 +759,7 @@ mod tests {
             vec![(Some(1_i8), Some(3_i16)), (Some(2_i8), Some(4_i16))]
         );
 
-        assert_eq!(result, ScalarValue::UInt64(Some(2)));
+        assert_eq!(result, ScalarValue::Int64(Some(2)));
 
         Ok(())
     }
@@ -767,34 +767,34 @@ mod tests {
     #[test]
     fn count_distinct_update() -> Result<()> {
         let (states, result) = run_update(
-            &[DataType::Int32, DataType::UInt64],
+            &[DataType::Int32, DataType::Int64],
             &[
-                vec![ScalarValue::Int32(Some(-1)), ScalarValue::UInt64(Some(5))],
-                vec![ScalarValue::Int32(Some(5)), ScalarValue::UInt64(Some(1))],
-                vec![ScalarValue::Int32(Some(-1)), ScalarValue::UInt64(Some(5))],
-                vec![ScalarValue::Int32(Some(5)), ScalarValue::UInt64(Some(1))],
-                vec![ScalarValue::Int32(Some(-1)), ScalarValue::UInt64(Some(6))],
-                vec![ScalarValue::Int32(Some(-1)), ScalarValue::UInt64(Some(7))],
-                vec![ScalarValue::Int32(Some(2)), ScalarValue::UInt64(Some(7))],
+                vec![ScalarValue::Int32(Some(-1)), ScalarValue::Int64(Some(5))],
+                vec![ScalarValue::Int32(Some(5)), ScalarValue::Int64(Some(1))],
+                vec![ScalarValue::Int32(Some(-1)), ScalarValue::Int64(Some(5))],
+                vec![ScalarValue::Int32(Some(5)), ScalarValue::Int64(Some(1))],
+                vec![ScalarValue::Int32(Some(-1)), ScalarValue::Int64(Some(6))],
+                vec![ScalarValue::Int32(Some(-1)), ScalarValue::Int64(Some(7))],
+                vec![ScalarValue::Int32(Some(2)), ScalarValue::Int64(Some(7))],
             ],
         )?;
 
         let state_vec1 = state_to_vec!(&states[0], Int32, i32).unwrap();
-        let state_vec2 = state_to_vec!(&states[1], UInt64, u64).unwrap();
-        let state_pairs = collect_states::<i32, u64>(&state_vec1, &state_vec2);
+        let state_vec2 = state_to_vec!(&states[1], Int64, i64).unwrap();
+        let state_pairs = collect_states::<i32, i64>(&state_vec1, &state_vec2);
 
         assert_eq!(states.len(), 2);
         assert_eq!(
             state_pairs,
             vec![
-                (Some(-1_i32), Some(5_u64)),
-                (Some(-1_i32), Some(6_u64)),
-                (Some(-1_i32), Some(7_u64)),
-                (Some(2_i32), Some(7_u64)),
-                (Some(5_i32), Some(1_u64)),
+                (Some(-1_i32), Some(5_i64)),
+                (Some(-1_i32), Some(6_i64)),
+                (Some(-1_i32), Some(7_i64)),
+                (Some(2_i32), Some(7_i64)),
+                (Some(5_i32), Some(1_i64)),
             ]
         );
-        assert_eq!(result, ScalarValue::UInt64(Some(5)));
+        assert_eq!(result, ScalarValue::Int64(Some(5)));
 
         Ok(())
     }
@@ -802,31 +802,31 @@ mod tests {
     #[test]
     fn count_distinct_update_with_nulls() -> Result<()> {
         let (states, result) = run_update(
-            &[DataType::Int32, DataType::UInt64],
+            &[DataType::Int32, DataType::Int64],
             &[
                 // None of these updates contains a None, so these are accumulated.
-                vec![ScalarValue::Int32(Some(-1)), ScalarValue::UInt64(Some(5))],
-                vec![ScalarValue::Int32(Some(-1)), ScalarValue::UInt64(Some(5))],
-                vec![ScalarValue::Int32(Some(-2)), ScalarValue::UInt64(Some(5))],
+                vec![ScalarValue::Int32(Some(-1)), ScalarValue::Int64(Some(5))],
+                vec![ScalarValue::Int32(Some(-1)), ScalarValue::Int64(Some(5))],
+                vec![ScalarValue::Int32(Some(-2)), ScalarValue::Int64(Some(5))],
                 // Each of these updates contains at least one None, so these
                 // won't be accumulated.
-                vec![ScalarValue::Int32(Some(-1)), ScalarValue::UInt64(None)],
-                vec![ScalarValue::Int32(None), ScalarValue::UInt64(Some(5))],
-                vec![ScalarValue::Int32(None), ScalarValue::UInt64(None)],
+                vec![ScalarValue::Int32(Some(-1)), ScalarValue::Int64(None)],
+                vec![ScalarValue::Int32(None), ScalarValue::Int64(Some(5))],
+                vec![ScalarValue::Int32(None), ScalarValue::Int64(None)],
             ],
         )?;
 
         let state_vec1 = state_to_vec!(&states[0], Int32, i32).unwrap();
-        let state_vec2 = state_to_vec!(&states[1], UInt64, u64).unwrap();
-        let state_pairs = collect_states::<i32, u64>(&state_vec1, &state_vec2);
+        let state_vec2 = state_to_vec!(&states[1], Int64, i64).unwrap();
+        let state_pairs = collect_states::<i32, i64>(&state_vec1, &state_vec2);
 
         assert_eq!(states.len(), 2);
         assert_eq!(
             state_pairs,
-            vec![(Some(-2_i32), Some(5_u64)), (Some(-1_i32), Some(5_u64))]
+            vec![(Some(-2_i32), Some(5_i64)), (Some(-1_i32), Some(5_i64))]
         );
 
-        assert_eq!(result, ScalarValue::UInt64(Some(2)));
+        assert_eq!(result, ScalarValue::Int64(Some(2)));
 
         Ok(())
     }
@@ -843,30 +843,30 @@ mod tests {
 
         let state_in2 = build_list!(
             vec![
-                Some(vec![Some(5_u64), Some(6_u64), Some(5_u64), Some(7_u64)]),
-                Some(vec![Some(5_u64), Some(7_u64)]),
+                Some(vec![Some(5_i64), Some(6_i64), Some(5_i64), Some(7_i64)]),
+                Some(vec![Some(5_i64), Some(7_i64)]),
             ],
-            UInt64Builder
+            Int64Builder
         )?;
 
         let (states, result) = run_merge_batch(&[state_in1, state_in2])?;
 
         let state_out_vec1 = state_to_vec!(&states[0], Int32, i32).unwrap();
-        let state_out_vec2 = state_to_vec!(&states[1], UInt64, u64).unwrap();
-        let state_pairs = collect_states::<i32, u64>(&state_out_vec1, &state_out_vec2);
+        let state_out_vec2 = state_to_vec!(&states[1], Int64, i64).unwrap();
+        let state_pairs = collect_states::<i32, i64>(&state_out_vec1, &state_out_vec2);
 
         assert_eq!(
             state_pairs,
             vec![
-                (Some(-3_i32), Some(7_u64)),
-                (Some(-2_i32), Some(5_u64)),
-                (Some(-2_i32), Some(7_u64)),
-                (Some(-1_i32), Some(5_u64)),
-                (Some(-1_i32), Some(6_u64)),
+                (Some(-3_i32), Some(7_i64)),
+                (Some(-2_i32), Some(5_i64)),
+                (Some(-2_i32), Some(7_i64)),
+                (Some(-1_i32), Some(5_i64)),
+                (Some(-1_i32), Some(6_i64)),
             ]
         );
 
-        assert_eq!(result, ScalarValue::UInt64(Some(5)));
+        assert_eq!(result, ScalarValue::Int64(Some(5)));
 
         Ok(())
     }
