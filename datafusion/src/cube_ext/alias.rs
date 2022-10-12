@@ -73,7 +73,7 @@ impl UserDefinedLogicalNode for LogicalAlias {
         Arc::new(LogicalAlias {
             input: inputs[0].clone(),
             alias: self.alias.clone(),
-            schema: Arc::new(inputs[0].schema().alias(Some(&self.alias)).unwrap())
+            schema: Arc::new(inputs[0].schema().alias(Some(&self.alias)).unwrap()),
         })
     }
 }
