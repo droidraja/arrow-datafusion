@@ -1714,6 +1714,21 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                     self.sql_expr_to_logical_expr(*expr, schema)?,
                 ],
             }),
+            /* CubeSQL */
+            SQLExpr::Position { expr, r#in } => {
+                let args = vec![
+                    FunctionArg::Unnamed(FunctionArgExpr::Expr(*expr)),
+                    FunctionArg::Unnamed(FunctionArgExpr::Expr(*r#in)),
+                ];
+                match self.schema_provider.get_function_meta("position") {
+                    Some(fm) => {
+                        let args = self.function_args_to_expr(args, schema)?;
+
+                        Ok(Expr::ScalarUDF { fun: fm, args })
+                    }
+                    _ => Err(DataFusionError::Plan("Invalid function 'position'".to_string()))
+                }
+            },
 
             SQLExpr::Value(Value::Interval {
                 value,
