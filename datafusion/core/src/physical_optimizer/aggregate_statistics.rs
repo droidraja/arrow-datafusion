@@ -150,7 +150,7 @@ fn take_optimizable_table_count(
             {
                 if lit_expr.value() == &ScalarValue::UInt8(Some(1)) {
                     return Some((
-                        ScalarValue::UInt64(Some(num_rows as u64)),
+                        ScalarValue::Int64(Some(num_rows as i64)),
                         "COUNT(UInt8(1))",
                     ));
                 }
@@ -183,7 +183,7 @@ fn take_optimizable_column_count(
                 {
                     let expr = format!("COUNT({})", col_expr.name());
                     return Some((
-                        ScalarValue::UInt64(Some((num_rows - val) as u64)),
+                        ScalarValue::Int64(Some((num_rows - val) as i64)),
                         expr,
                     ));
                 }
@@ -254,7 +254,7 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    use arrow::array::{Int32Array, UInt64Array};
+    use arrow::array::{Int32Array, Int64Array};
     use arrow::datatypes::{DataType, Field, Schema};
     use arrow::record_batch::RecordBatch;
 
@@ -301,8 +301,8 @@ mod tests {
         let optimized = AggregateStatistics::new().optimize(Arc::new(plan), &conf)?;
 
         let (col, count) = match nulls {
-            false => (Field::new("COUNT(UInt8(1))", DataType::UInt64, false), 3),
-            true => (Field::new("COUNT(a)", DataType::UInt64, false), 2),
+            false => (Field::new("COUNT(UInt8(1))", DataType::Int64, false), 3),
+            true => (Field::new("COUNT(a)", DataType::Int64, false), 2),
         };
 
         // A ProjectionExec is a sign that the count optimization was applied
@@ -313,7 +313,7 @@ mod tests {
             result[0]
                 .column(0)
                 .as_any()
-                .downcast_ref::<UInt64Array>()
+                .downcast_ref::<Int64Array>()
                 .unwrap()
                 .values(),
             &[count]
@@ -327,7 +327,7 @@ mod tests {
             None => expressions::lit(ScalarValue::UInt8(Some(1))),
             Some(s) => expressions::col(col.unwrap(), s).unwrap(),
         };
-        Arc::new(Count::new(expr, "my_count_alias", DataType::UInt64))
+        Arc::new(Count::new(expr, "my_count_alias", DataType::Int64))
     }
 
     #[tokio::test]
