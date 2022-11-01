@@ -991,7 +991,7 @@ impl DefaultPhysicalPlanner {
         } else if let Some(aliased) = node.as_any().downcast_ref::<ProjectionExec>() {
             self.merge_sort_node_sorted_on(
                 aliased.children()[0].clone(),
-                Some(aliased.schema().clone()),
+                projection.or(Some(aliased.schema().clone())),
             )
         } else {
             Ok(None)
