@@ -810,6 +810,10 @@ fn build_row_group_predicate(
     }
 }
 
+#[tracing::instrument(
+    level = "trace",
+    skip(metrics, predicate_builder, response_tx, metadata_cache)
+)]
 fn read_files(
     filenames: &[String],
     metrics: ParquetPartitionMetrics,
