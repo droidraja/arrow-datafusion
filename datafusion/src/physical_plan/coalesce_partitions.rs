@@ -92,6 +92,7 @@ impl ExecutionPlan for CoalescePartitionsExec {
         }
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn execute(&self, partition: usize) -> Result<SendableRecordBatchStream> {
         // CoalescePartitionsExec produces a single partition
         if 0 != partition {

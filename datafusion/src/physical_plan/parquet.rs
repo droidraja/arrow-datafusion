@@ -593,6 +593,7 @@ impl ExecutionPlan for ParquetExec {
         }
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn execute(&self, partition: usize) -> Result<SendableRecordBatchStream> {
         // because the parquet implementation is not thread-safe, it is necessary to execute
         // on a thread and communicate with channels
@@ -839,6 +840,8 @@ fn read_files(
         let mut batch_reader = arrow_reader
             .get_record_reader_by_columns(projection.to_owned(), batch_size)?;
         loop {
+            let span = tracing::trace_span!("read batch");
+            let _s = span.enter();
             match batch_reader.next() {
                 Some(Ok(batch)) => {
                     total_rows += batch.num_rows();

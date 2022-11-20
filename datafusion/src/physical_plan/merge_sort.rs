@@ -107,6 +107,7 @@ impl ExecutionPlan for MergeSortExec {
         }
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn execute(&self, partition: usize) -> Result<SendableRecordBatchStream> {
         if 0 != partition {
             return Err(DataFusionError::Internal(format!(
@@ -178,6 +179,7 @@ impl ExecutionPlan for MergeReSortExec {
         )?))
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn execute(&self, partition: usize) -> Result<SendableRecordBatchStream> {
         if 0 != partition {
             return Err(DataFusionError::Internal(format!(
@@ -620,6 +622,7 @@ impl ExecutionPlan for LastRowByUniqueKeyExec {
         }
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn execute(&self, partition: usize) -> Result<SendableRecordBatchStream> {
         if 0 != partition {
             return Err(DataFusionError::Internal(format!(

@@ -108,6 +108,7 @@ impl ExecutionPlan for GlobalLimitExec {
         self.input.output_hints()
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn execute(&self, partition: usize) -> Result<SendableRecordBatchStream> {
         // GlobalLimitExec has a single output partition
         if 0 != partition {
@@ -205,6 +206,7 @@ impl ExecutionPlan for LocalLimitExec {
         self.input.output_hints()
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn execute(&self, partition: usize) -> Result<SendableRecordBatchStream> {
         let stream = self.input.execute(partition).await?;
         Ok(Box::pin(LimitStream::new(stream, self.limit)))
@@ -224,6 +226,7 @@ impl ExecutionPlan for LocalLimitExec {
 }
 
 /// Truncate a RecordBatch to maximum of n rows
+#[tracing::instrument(level = "trace", skip(batch))]
 pub fn truncate_batch(batch: &RecordBatch, n: usize) -> RecordBatch {
     let limited_columns: Vec<ArrayRef> = (0..batch.num_columns())
         .map(|i| limit(batch.column(i), n))

@@ -134,6 +134,7 @@ impl ExecutionPlan for FilterExec {
         }
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn execute(&self, partition: usize) -> Result<SendableRecordBatchStream> {
         Ok(Box::pin(FilterExecStream {
             schema: self.input.schema(),
