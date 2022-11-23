@@ -89,7 +89,6 @@ impl ExecutionPlan for MemoryExec {
         }
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
     async fn execute(&self, partition: usize) -> Result<SendableRecordBatchStream> {
         Ok(Box::pin(MemoryStream::try_new(
             self.partitions[partition].clone(),

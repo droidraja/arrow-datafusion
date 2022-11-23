@@ -102,7 +102,6 @@ impl ExecutionPlan for SkipExec {
         self.input.output_hints()
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
     async fn execute(&self, partition: usize) -> Result<SendableRecordBatchStream> {
         if 0 != partition {
             return Err(DataFusionError::Internal(format!(

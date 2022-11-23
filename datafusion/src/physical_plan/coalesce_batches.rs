@@ -105,7 +105,6 @@ impl ExecutionPlan for CoalesceBatchesExec {
         }
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
     async fn execute(&self, partition: usize) -> Result<SendableRecordBatchStream> {
         Ok(Box::pin(CoalesceBatchesStream {
             input: self.input.execute(partition).await?,

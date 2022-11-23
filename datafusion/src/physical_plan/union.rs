@@ -78,7 +78,6 @@ impl ExecutionPlan for UnionExec {
         Ok(Arc::new(UnionExec::new(children)))
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
     async fn execute(&self, mut partition: usize) -> Result<SendableRecordBatchStream> {
         // find partition to execute
         for input in self.inputs.iter() {

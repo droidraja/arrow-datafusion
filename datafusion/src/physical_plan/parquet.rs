@@ -593,7 +593,6 @@ impl ExecutionPlan for ParquetExec {
         }
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
     async fn execute(&self, partition: usize) -> Result<SendableRecordBatchStream> {
         // because the parquet implementation is not thread-safe, it is necessary to execute
         // on a thread and communicate with channels

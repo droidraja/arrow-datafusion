@@ -96,7 +96,6 @@ impl ExecutionPlan for MergeExec {
         }
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
     async fn execute(&self, partition: usize) -> Result<SendableRecordBatchStream> {
         // MergeExec produces a single partition
         if 0 != partition {
