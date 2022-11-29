@@ -139,7 +139,6 @@ impl ExecutionPlan for SortExec {
         }
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
     async fn execute(&self, partition: usize) -> Result<SendableRecordBatchStream> {
         if !self.preserve_partitioning {
             if 0 != partition {
