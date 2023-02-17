@@ -22,6 +22,7 @@ pub mod delta;
 mod dfschema;
 mod error;
 pub mod from_slice;
+mod outer_query_cursor;
 pub mod parsers;
 #[cfg(feature = "pyarrow")]
 mod pyarrow;
@@ -35,6 +36,7 @@ use arrow::compute::SortOptions;
 pub use column::Column;
 pub use dfschema::{DFField, DFSchema, DFSchemaRef, ExprSchema, ToDFSchema};
 pub use error::{field_not_found, DataFusionError, Result, SchemaError, SharedResult};
+pub use outer_query_cursor::OuterQueryCursor;
 pub use parsers::parse_interval;
 pub use scalar::{ScalarType, ScalarValue};
 pub use stats::{ColumnStatistics, Statistics};

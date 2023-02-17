@@ -1046,6 +1046,10 @@ impl AsLogicalPlan for LogicalPlanNode {
                     ))),
                 })
             }
+            LogicalPlan::CubeSubquery(_) => Err(DataFusionError::NotImplemented(
+                "LogicalPlan serde is not yet implemented for cube subqueries"
+                    .to_string(),
+            )),
             LogicalPlan::Subquery(_) => Err(DataFusionError::NotImplemented(
                 "LogicalPlan serde is not yet implemented for subqueries".to_string(),
             )),

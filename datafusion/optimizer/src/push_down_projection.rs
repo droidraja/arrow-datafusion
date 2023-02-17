@@ -28,8 +28,8 @@ use datafusion_expr::utils::grouping_set_to_exprlist;
 use datafusion_expr::{
     logical_plan::{
         builder::{build_join_schema, LogicalPlanBuilder},
-        Aggregate, Analyze, Join, LogicalPlan, Projection, SubqueryAlias, TableScan,
-        Union, Window,
+        Aggregate, Analyze, CubeSubquery, Join, LogicalPlan, Projection, SubqueryAlias,
+        TableScan, Union, Window,
     },
     utils::{expr_to_columns, exprlist_to_columns, find_sort_exprs, from_plan},
     Expr,
@@ -360,6 +360,42 @@ fn optimize_plan(
             Ok(LogicalPlan::Union(Union {
                 inputs: new_inputs.iter().cloned().map(Arc::new).collect(),
                 schema: Arc::new(new_schema),
+            }))
+        }
+        LogicalPlan::CubeSubquery(CubeSubquery {
+            input, subqueries, ..
+        }) => {
+            let mut subquery_required_columns = HashSet::new();
+            for subquery in subqueries.iter() {
+                let mut inputs = vec![subquery];
+                while !inputs.is_empty() {
+                    let mut next_inputs = Vec::new();
+                    for input in inputs.iter() {
+                        let expr = input.expressions();
+                        exprlist_to_columns(&expr, &mut subquery_required_columns)?;
+                        next_inputs.extend(input.inputs());
+                    }
+                    inputs = next_inputs;
+                }
+            }
+            let schema = input.schema();
+            new_required_columns.extend(
+                subquery_required_columns
+                    .into_iter()
+                    .filter(|c| schema.index_of_column(c).is_ok()),
+            );
+            let input = optimize_plan(
+                _optimizer,
+                input,
+                &new_required_columns,
+                has_projection,
+                _config,
+            )?;
+            let new_schema = CubeSubquery::merged_schema(&input, subqueries);
+            Ok(LogicalPlan::CubeSubquery(CubeSubquery {
+                input: Arc::new(input),
+                schema: Arc::new(new_schema),
+                subqueries: subqueries.clone(),
             }))
         }
         LogicalPlan::SubqueryAlias(SubqueryAlias { input, alias, .. }) => {

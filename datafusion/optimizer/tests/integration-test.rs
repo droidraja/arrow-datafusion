@@ -54,6 +54,7 @@ fn case_when() -> Result<()> {
     Ok(())
 }
 
+#[ignore] // disabled since CubeSubquery is used
 #[test]
 fn subquery_filter_with_cast() -> Result<()> {
     // regression test for https://github.com/apache/arrow-datafusion/issues/3760

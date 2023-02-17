@@ -87,6 +87,8 @@ use std::sync::Arc;
 pub enum Expr {
     /// An expression with a specific name.
     Alias(Box<Expr>, String),
+    /// A named reference to a qualified field in outer query.
+    OuterColumn(DataType, Column),
     /// A named reference to a qualified filed in a schema.
     Column(Column),
     /// A named reference to a variable in a registry.
@@ -615,6 +617,7 @@ impl Expr {
             Expr::Literal(..) => "Literal",
             Expr::Negative(..) => "Negative",
             Expr::Not(..) => "Not",
+            Expr::OuterColumn(..) => "OuterColumn",
             Expr::Placeholder { .. } => "Placeholder",
             Expr::QualifiedWildcard { .. } => "QualifiedWildcard",
             Expr::ScalarFunction { .. } => "ScalarFunction",
@@ -834,6 +837,7 @@ impl fmt::Debug for Expr {
         match self {
             Expr::Alias(expr, alias) => write!(f, "{expr:?} AS {alias}"),
             Expr::Column(c) => write!(f, "{c}"),
+            Expr::OuterColumn(_, c) => write!(f, "^{c}"),
             Expr::ScalarVariable(_, var_names) => write!(f, "{}", var_names.join(".")),
             Expr::Literal(v) => write!(f, "{v:?}"),
             Expr::Case(case) => {
@@ -1114,6 +1118,7 @@ fn create_name(e: &Expr) -> Result<String> {
     match e {
         Expr::Alias(_, name) => Ok(name.clone()),
         Expr::Column(c) => Ok(c.flat_name()),
+        Expr::OuterColumn(_, c) => Ok(c.flat_name()),
         Expr::ScalarVariable(_, variable_names) => Ok(variable_names.join(".")),
         Expr::Literal(value) => Ok(format!("{value:?}")),
         Expr::BinaryExpr(binary_expr) => {

@@ -20,6 +20,7 @@ use crate::{
     execution_props::ExecutionProps,
     expressions::{
         self, binary, like, Column, DateTimeIntervalExpr, GetIndexedFieldExpr, Literal,
+        OuterColumn,
     },
     functions, udf,
     var_provider::VarType,
@@ -66,6 +67,18 @@ pub fn create_physical_expr(
         Expr::Column(c) => {
             let idx = input_dfschema.index_of_column(c)?;
             Ok(Arc::new(Column::new(&c.name, idx)))
+        }
+        Expr::OuterColumn(_, c) => {
+            let cursors = execution_props.outer_query_cursors.clone();
+            let cursor = cursors
+                .iter()
+                .find(|cur| cur.schema().field_with_name(c.name.as_str()).is_ok())
+                .ok_or_else(|| {
+                    DataFusionError::Execution(format!(
+                        "Outer query cursor not found for {c:?}",
+                    ))
+                })?;
+            Ok(Arc::new(OuterColumn::new(c.name.as_str(), cursor.clone())))
         }
         Expr::Literal(value) => Ok(Arc::new(Literal::new(value.clone()))),
         Expr::ScalarVariable(_, variable_names) => {

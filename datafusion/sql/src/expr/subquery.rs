@@ -63,7 +63,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
         })
     }
 
-    pub(super) fn parse_scalar_subquery(
+    pub(super) fn _parse_scalar_subquery(
         &self,
         subquery: Query,
         input_schema: &DFSchema,

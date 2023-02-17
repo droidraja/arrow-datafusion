@@ -26,10 +26,10 @@ use crate::utils::{columnize_expr, compare_sort_expr, exprlist_to_fields, from_p
 use crate::{and, binary_expr, Operator};
 use crate::{
     logical_plan::{
-        Aggregate, Analyze, CrossJoin, Distinct, EmptyRelation, Explain, Filter, Join,
-        JoinConstraint, JoinType, Limit, LogicalPlan, Partitioning, PlanType, Prepare,
-        Projection, Repartition, Sort, SubqueryAlias, TableScan, ToStringifiedPlan,
-        Union, Values, Window,
+        Aggregate, Analyze, CrossJoin, CubeSubquery, Distinct, EmptyRelation, Explain,
+        Filter, Join, JoinConstraint, JoinType, Limit, LogicalPlan, Partitioning,
+        PlanType, Prepare, Projection, Repartition, Sort, SubqueryAlias, TableScan,
+        ToStringifiedPlan, Union, Values, Window,
     },
     utils::{
         can_hash, expand_qualified_wildcard, expand_wildcard,
@@ -334,6 +334,20 @@ impl LogicalPlanBuilder {
     /// Apply an alias
     pub fn alias(self, alias: impl Into<String>) -> Result<Self> {
         Ok(Self::from(subquery_alias(self.plan, alias)?))
+    }
+
+    /// Apply correlated sub query
+    pub fn cube_subquery(
+        &self,
+        subqueries: impl IntoIterator<Item = impl Into<LogicalPlan>>,
+    ) -> Result<Self> {
+        let subqueries = subqueries.into_iter().map(|l| l.into()).collect::<Vec<_>>();
+        let schema = Arc::new(CubeSubquery::merged_schema(&self.plan, &subqueries));
+        Ok(Self::from(LogicalPlan::CubeSubquery(CubeSubquery {
+            input: Arc::new(self.plan.clone()),
+            subqueries,
+            schema,
+        })))
     }
 
     /// Add missing sort columns to all downstream projection

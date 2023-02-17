@@ -68,7 +68,6 @@ use crate::optimizer::OptimizerRule;
 use datafusion_sql::{ResolvedTableReference, TableReference};
 
 use crate::physical_optimizer::coalesce_batches::CoalesceBatches;
-use crate::physical_optimizer::repartition::Repartition;
 
 use crate::config::ConfigOptions;
 use crate::execution::{runtime_env::RuntimeEnv, FunctionRegistry};
@@ -1461,7 +1460,8 @@ impl SessionState {
             // - It's conflicted with some parts of the EnforceDistribution, since it will
             //   introduce additional repartitioning while EnforceDistribution aims to
             //   reduce unnecessary repartitioning.
-            Arc::new(Repartition::new()),
+            // FIXME: Repartition conflicts with CubeSubquery
+            //Arc::new(Repartition::new()),
             // - Currently it will depend on the partition number to decide whether to change the
             // single node sort to parallel local sort and merge. Therefore, GlobalSortSelection
             // should run after the Repartition.
@@ -1815,9 +1815,19 @@ impl SessionState {
         &self.execution_props
     }
 
+    /// Set the execution properties
+    pub fn set_execution_props(&mut self, execution_props: ExecutionProps) {
+        self.execution_props = execution_props
+    }
+
     /// Return the [`SessionConfig`]
     pub fn config(&self) -> &SessionConfig {
         &self.config
+    }
+
+    /// Set [`SessionConfig`]
+    pub fn set_config(&mut self, config: SessionConfig) {
+        self.config = config
     }
 
     /// Return the physical optimizers

@@ -45,6 +45,21 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
             // compound identifiers, but this is not a compound
             // identifier. (e.g. it is "foo.bar" not foo.bar)
 
+            if let Some(f) = self
+                .context
+                .outer_query_context_schema
+                .iter()
+                .find_map(|s| s.field_with_unqualified_name(&id.value).ok())
+            {
+                return Ok(Expr::OuterColumn(
+                    f.data_type().clone(),
+                    Column {
+                        relation: None,
+                        name: id.value,
+                    },
+                ));
+            }
+
             Ok(Expr::Column(Column {
                 relation: None,
                 name: normalize_ident(id),
@@ -100,6 +115,22 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                         )))
                     } else {
                         // table.column identifier
+                        if let Some(f) = self
+                            .context
+                            .outer_query_context_schema
+                            .iter()
+                            .find_map(|s| {
+                                s.field_with_qualified_name(&relation, &name).ok()
+                            })
+                        {
+                            return Ok(Expr::OuterColumn(
+                                f.data_type().clone(),
+                                Column {
+                                    relation: Some(relation),
+                                    name,
+                                },
+                            ));
+                        }
                         Ok(Expr::Column(Column {
                             relation: Some(relation),
                             name,

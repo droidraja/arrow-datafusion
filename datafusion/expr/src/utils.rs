@@ -24,9 +24,9 @@ use crate::expr_visitor::{
 };
 use crate::logical_plan::builder::build_join_schema;
 use crate::logical_plan::{
-    Aggregate, Analyze, CreateMemoryTable, CreateView, Distinct, Extension, Filter, Join,
-    Limit, Partitioning, Prepare, Projection, Repartition, Sort as SortPlan, Subquery,
-    SubqueryAlias, Union, Values, Window,
+    Aggregate, Analyze, CreateMemoryTable, CreateView, CubeSubquery, Distinct, Extension,
+    Filter, Join, Limit, Partitioning, Prepare, Projection, Repartition,
+    Sort as SortPlan, Subquery, SubqueryAlias, Union, Values, Window,
 };
 use crate::{
     BinaryExpr, Cast, DmlStatement, Expr, ExprSchemable, LogicalPlan, LogicalPlanBuilder,
@@ -91,6 +91,9 @@ pub fn expr_to_columns(expr: &Expr, accum: &mut HashSet<Column>) -> Result<()> {
     inspect_expr_pre(expr, |expr| {
         match expr {
             Expr::Column(qc) => {
+                accum.insert(qc.clone());
+            }
+            Expr::OuterColumn(_, qc) => {
                 accum.insert(qc.clone());
             }
             Expr::ScalarVariable(_, var_names) => {
@@ -479,6 +482,13 @@ pub fn from_plan(
                 Arc::new(inputs[0].clone()),
                 schema.clone(),
             )?))
+        }
+        LogicalPlan::CubeSubquery(CubeSubquery { schema, .. }) => {
+            Ok(LogicalPlan::CubeSubquery(CubeSubquery {
+                subqueries: inputs[1..inputs.len()].to_vec(),
+                input: Arc::new(inputs[0].clone()),
+                schema: schema.clone(),
+            }))
         }
         LogicalPlan::Dml(DmlStatement {
             table_name,

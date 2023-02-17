@@ -17,7 +17,7 @@
 
 //! SQL Query Planner (produces logical plan from SQL AST)
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::vec;
 
 use arrow_schema::*;
@@ -27,7 +27,9 @@ use sqlparser::ast::{ColumnDef as SQLColumnDef, ColumnOption};
 use sqlparser::ast::{DataType as SQLDataType, Ident, ObjectName, TableAlias};
 
 use datafusion_common::config::ConfigOptions;
-use datafusion_common::{field_not_found, DFSchema, DataFusionError, Result};
+use datafusion_common::{
+    field_not_found, DFSchema, DFSchemaRef, DataFusionError, Result,
+};
 use datafusion_common::{OwnedTableReference, TableReference};
 use datafusion_expr::logical_plan::{LogicalPlan, LogicalPlanBuilder};
 use datafusion_expr::utils::find_column_exprs;
@@ -53,7 +55,7 @@ pub trait ContextProvider {
 }
 
 /// SQL parser options
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ParserOptions {
     pub parse_float_as_decimal: bool,
 }
@@ -98,6 +100,7 @@ impl PlannerContext {
 pub struct SqlToRel<'a, S: ContextProvider> {
     pub(crate) schema_provider: &'a S,
     pub(crate) options: ParserOptions,
+    pub(crate) context: SqlToRelContext,
 }
 
 impl<'a, S: ContextProvider> SqlToRel<'a, S> {
@@ -111,6 +114,18 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
         SqlToRel {
             schema_provider,
             options,
+            context: SqlToRelContext::default(),
+        }
+    }
+
+    /// Creates new version of SqlToRel with forked planning context
+    pub fn with_context(&self, f: impl FnOnce(&mut SqlToRelContext)) -> Self {
+        let mut context = self.context.fork();
+        f(&mut context);
+        SqlToRel {
+            schema_provider: self.schema_provider,
+            options: self.options.clone(),
+            context,
         }
     }
 
@@ -181,10 +196,26 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
             .try_for_each(|col| match col {
                 Expr::Column(col) => match &col.relation {
                     Some(r) => {
+                        if let Some(plans) = self.context.subqueries_plans()? {
+                            if plans.into_iter().any(|p| {
+                                p.schema().field_with_qualified_name(r, &col.name).is_ok()
+                            }) {
+                                return Ok(());
+                            }
+                        }
                         schema.field_with_qualified_name(r, &col.name)?;
                         Ok(())
                     }
                     None => {
+                        if let Some(plans) = self.context.subqueries_plans()? {
+                            if plans.into_iter().any(|p| {
+                                !p.schema()
+                                    .fields_with_unqualified_name(&col.name)
+                                    .is_empty()
+                            }) {
+                                return Ok(());
+                            }
+                        }
                         if !schema.fields_with_unqualified_name(&col.name).is_empty() {
                             Ok(())
                         } else {
@@ -308,6 +339,43 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                 "Unsupported SQL type {sql_type:?}"
             ))),
         }
+    }
+}
+
+/// Planning context
+#[derive(Default)]
+pub struct SqlToRelContext {
+    pub outer_query_context_schema: Vec<DFSchemaRef>,
+    pub subqueries_plans: Option<RwLock<Vec<LogicalPlan>>>,
+}
+
+impl SqlToRelContext {
+    /// Used to copy new version context based on the current one
+    pub fn fork(&self) -> Self {
+        Self {
+            outer_query_context_schema: self.outer_query_context_schema.clone(),
+            subqueries_plans: None,
+        }
+    }
+
+    pub fn add_subquery_plan(&self, plan: LogicalPlan) -> Result<()> {
+        self.subqueries_plans.as_ref().ok_or_else(|| DataFusionError::Plan(format!("Cube sub query {plan:?} planned outside of sub query context. This type of sub query isn't supported")))?.write().unwrap().push(plan);
+        Ok(())
+    }
+
+    pub fn subqueries_plans(&self) -> Result<Option<Vec<LogicalPlan>>> {
+        Ok(if let Some(subqueries) = self.subqueries_plans.as_ref() {
+            Some(
+                subqueries
+                    .read()
+                    .map_err(|e| DataFusionError::Plan(e.to_string()))?
+                    .iter()
+                    .cloned()
+                    .collect(),
+            )
+        } else {
+            None
+        })
     }
 }
 

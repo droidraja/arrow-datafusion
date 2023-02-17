@@ -134,6 +134,7 @@ impl ExprVisitable for Expr {
                 })
             }
             Expr::Column(_)
+            | Expr::OuterColumn(_, _)
             | Expr::ScalarVariable(_, _)
             | Expr::Literal(_)
             | Expr::Exists { .. }

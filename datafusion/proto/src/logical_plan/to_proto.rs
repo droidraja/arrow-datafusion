@@ -846,10 +846,10 @@ impl TryFrom<&Expr> for protobuf::LogicalExprNode {
             Expr::Wildcard => Self {
                 expr_type: Some(ExprType::Wildcard(true)),
             },
-            Expr::ScalarSubquery(_) | Expr::InSubquery { .. } | Expr::Exists { .. } => {
+            Expr::ScalarSubquery(_) | Expr::InSubquery { .. } | Expr::Exists { .. } | Expr::OuterColumn { .. } => {
                 // we would need to add logical plan operators to datafusion.proto to support this
                 // see discussion in https://github.com/apache/arrow-datafusion/issues/2565
-                return Err(Error::General("Proto serialization error: Expr::ScalarSubquery(_) | Expr::InSubquery { .. } | Expr::Exists { .. } not supported".to_string()));
+                return Err(Error::General("Proto serialization error: Expr::ScalarSubquery(_) | Expr::InSubquery { .. } | Expr::Exists { .. } | Expr::OuterColumn { .. } not supported".to_string()));
             }
             Expr::GetIndexedField(GetIndexedField { key, expr }) =>
                 Self {

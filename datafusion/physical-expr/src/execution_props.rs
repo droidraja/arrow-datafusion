@@ -17,6 +17,7 @@
 
 use crate::var_provider::{VarProvider, VarType};
 use chrono::{DateTime, TimeZone, Utc};
+use datafusion_common::OuterQueryCursor;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -32,6 +33,8 @@ pub struct ExecutionProps {
     pub query_execution_start_time: DateTime<Utc>,
     /// providers for scalar variables
     pub var_providers: Option<HashMap<VarType, Arc<dyn VarProvider + Send + Sync>>>,
+    /// Used to lookup column values in outer queries by sub queries
+    pub outer_query_cursors: Vec<Arc<OuterQueryCursor>>,
 }
 
 impl Default for ExecutionProps {
@@ -48,6 +51,7 @@ impl ExecutionProps {
             // not being updated / propagated correctly
             query_execution_start_time: Utc.timestamp_nanos(0),
             var_providers: None,
+            outer_query_cursors: Vec::new(),
         }
     }
 
@@ -81,5 +85,17 @@ impl ExecutionProps {
         self.var_providers
             .as_ref()
             .and_then(|var_providers| var_providers.get(&var_type).map(Arc::clone))
+    }
+
+    /// Adds OuterQueryCursor to this ExecutionProps context and returns cloned copy
+    pub fn with_outer_query_cursor(&self, cursor: Arc<OuterQueryCursor>) -> Self {
+        let mut clone = self.clone();
+        clone.outer_query_cursors.push(cursor);
+        clone
+    }
+
+    /// Get current OuterQueryCursor context instances
+    pub fn outer_query_cursors(&self) -> Vec<Arc<OuterQueryCursor>> {
+        self.outer_query_cursors.clone()
     }
 }

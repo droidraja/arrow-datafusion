@@ -87,6 +87,8 @@ pub enum LogicalPlan {
     SubqueryAlias(SubqueryAlias),
     /// Skip some number of rows, and then fetch some number of rows.
     Limit(Limit),
+    /// Evaluates correlated sub queries
+    CubeSubquery(CubeSubquery),
     /// Creates an external table.
     CreateExternalTable(CreateExternalTable),
     /// Creates an in memory table.
@@ -135,6 +137,7 @@ impl LogicalPlan {
                 projected_schema, ..
             }) => projected_schema,
             LogicalPlan::Projection(Projection { schema, .. }) => schema,
+            LogicalPlan::CubeSubquery(CubeSubquery { schema, .. }) => schema,
             LogicalPlan::Filter(Filter { input, .. }) => input.schema(),
             LogicalPlan::Distinct(Distinct { input }) => input.schema(),
             LogicalPlan::Window(Window { schema, .. }) => schema,
@@ -179,6 +182,7 @@ impl LogicalPlan {
             LogicalPlan::Values(Values { schema, .. }) => vec![schema],
             LogicalPlan::Window(Window { input, schema, .. })
             | LogicalPlan::Projection(Projection { input, schema, .. })
+            | LogicalPlan::CubeSubquery(CubeSubquery { input, schema, .. })
             | LogicalPlan::Aggregate(Aggregate { input, schema, .. }) => {
                 let mut schemas = input.all_schemas();
                 schemas.insert(0, schema);
@@ -325,6 +329,7 @@ impl LogicalPlan {
             | LogicalPlan::CrossJoin(_)
             | LogicalPlan::Analyze(_)
             | LogicalPlan::Explain(_)
+            | LogicalPlan::CubeSubquery(_)
             | LogicalPlan::Union(_)
             | LogicalPlan::Distinct(_)
             | LogicalPlan::Dml(_)
@@ -338,6 +343,12 @@ impl LogicalPlan {
     pub fn inputs(self: &LogicalPlan) -> Vec<&LogicalPlan> {
         match self {
             LogicalPlan::Projection(Projection { input, .. }) => vec![input],
+            LogicalPlan::CubeSubquery(CubeSubquery {
+                input, subqueries, ..
+            }) => vec![input.as_ref()]
+                .into_iter()
+                .chain(subqueries.iter())
+                .collect(),
             LogicalPlan::Filter(Filter { input, .. }) => vec![input],
             LogicalPlan::Repartition(Repartition { input, .. }) => vec![input],
             LogicalPlan::Window(Window { input, .. }) => vec![input],
@@ -519,6 +530,17 @@ impl LogicalPlan {
 
         let recurse = match self {
             LogicalPlan::Projection(Projection { input, .. }) => input.accept(visitor)?,
+            LogicalPlan::CubeSubquery(CubeSubquery {
+                input, subqueries, ..
+            }) => {
+                input.accept(visitor)?;
+                for input in subqueries {
+                    if !input.accept(visitor)? {
+                        return Ok(false);
+                    }
+                }
+                true
+            }
             LogicalPlan::Filter(Filter { input, .. }) => input.accept(visitor)?,
             LogicalPlan::Repartition(Repartition { input, .. }) => {
                 input.accept(visitor)?
@@ -1011,6 +1033,7 @@ impl LogicalPlan {
                         }
                         Ok(())
                     }
+                    LogicalPlan::CubeSubquery(_) => write!(f, "CubeSubquery"),
                     LogicalPlan::Dml(DmlStatement { table_name, op, .. }) => {
                         write!(f, "Dml: op=[{op}] table=[{table_name}]")
                     }
@@ -1316,6 +1339,28 @@ pub struct EmptyRelation {
     pub produce_one_row: bool,
     /// The schema description of the output
     pub schema: DFSchemaRef,
+}
+
+/// Evaluates correlated sub queries
+#[derive(Clone)]
+pub struct CubeSubquery {
+    /// The list of sub queries
+    pub subqueries: Vec<LogicalPlan>,
+    /// The incoming logical plan
+    pub input: Arc<LogicalPlan>,
+    /// The schema description of the output
+    pub schema: DFSchemaRef,
+}
+
+impl CubeSubquery {
+    /// Merge schema of main input and correlated subquery columns
+    pub fn merged_schema(input: &LogicalPlan, subqueries: &[LogicalPlan]) -> DFSchema {
+        subqueries.iter().fold((**input.schema()).clone(), |a, b| {
+            let mut res = a;
+            res.merge(b.schema());
+            res
+        })
+    }
 }
 
 /// Values expression. See

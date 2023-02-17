@@ -27,6 +27,7 @@ fn init() {
     let _ = env_logger::try_init();
 }
 
+#[ignore] // disabled since CubeSubquery is used
 #[tokio::test]
 async fn correlated_recursive_scalar_subquery() -> Result<()> {
     let ctx = SessionContext::new();

@@ -26,8 +26,8 @@ use crate::datasource::source_as_provider;
 use crate::execution::context::{ExecutionProps, SessionState};
 use crate::logical_expr::utils::generate_sort_key;
 use crate::logical_expr::{
-    Aggregate, Distinct, EmptyRelation, Join, Projection, Sort, SubqueryAlias, TableScan,
-    Window,
+    Aggregate, CubeSubquery, Distinct, EmptyRelation, Join, Projection, Sort,
+    SubqueryAlias, TableScan, Window,
 };
 use crate::logical_expr::{
     CrossJoin, Expr, LogicalPlan, Partitioning as LogicalPartitioning, PlanType,
@@ -37,6 +37,8 @@ use crate::logical_expr::{Limit, Values};
 use crate::physical_expr::create_physical_expr;
 use crate::physical_optimizer::optimizer::PhysicalOptimizerRule;
 use crate::physical_plan::aggregates::{AggregateExec, AggregateMode, PhysicalGroupBy};
+use crate::physical_plan::coalesce_partitions::CoalescePartitionsExec;
+use crate::physical_plan::cube_subquery::CubeSubqueryExec;
 use crate::physical_plan::explain::ExplainExec;
 use crate::physical_plan::expressions::{Column, PhysicalSortExpr};
 use crate::physical_plan::filter::FilterExec;
@@ -57,7 +59,7 @@ use crate::{
 use arrow::compute::SortOptions;
 use arrow::datatypes::{Schema, SchemaRef};
 use async_trait::async_trait;
-use datafusion_common::{DFSchema, ScalarValue};
+use datafusion_common::{DFSchema, OuterQueryCursor, ScalarValue};
 use datafusion_expr::expr::{
     self, AggregateFunction, Between, BinaryExpr, Cast, GetIndexedField, GroupingSet,
     Like, TryCast, WindowFunction,
@@ -108,6 +110,7 @@ fn create_physical_name(e: &Expr, is_first_expr: bool) -> Result<String> {
                 Ok(c.flat_name())
             }
         }
+        Expr::OuterColumn(_, c) => Ok(c.flat_name()),
         Expr::Alias(_, name) => Ok(name.clone()),
         Expr::ScalarVariable(_, variable_names) => Ok(variable_names.join(".")),
         Expr::Literal(value) => Ok(format!("{value:?}")),
@@ -1108,6 +1111,22 @@ impl DefaultPhysicalPlanner {
                     };
 
                     Ok(Arc::new(GlobalLimitExec::new(input, *skip, *fetch)))
+                }
+                LogicalPlan::CubeSubquery(CubeSubquery { subqueries, input, schema }) => {
+                    let cursor = Arc::new(OuterQueryCursor::new(schema.as_ref().to_owned().into()));
+                    let mut new_session_state = session_state.clone();
+                    new_session_state.set_execution_props(new_session_state.execution_props().with_outer_query_cursor(cursor.clone()));
+                    new_session_state.set_config(new_session_state.config().clone().with_target_partitions(1));
+                    let subqueries = futures::stream::iter(subqueries)
+                        .then(|lp| self.create_initial_plan(lp, &new_session_state))
+                        .try_collect::<Vec<_>>()
+                        .await?.into_iter()
+                        .map(|p| -> Arc<dyn ExecutionPlan> {
+                            Arc::new(CoalescePartitionsExec::new(p))
+                        })
+                        .collect::<Vec<_>>();
+                    let input = self.create_initial_plan(input, &new_session_state).await?;
+                    Ok(Arc::new(CubeSubqueryExec::try_new(subqueries, input, cursor)?))
                 }
                 LogicalPlan::CreateExternalTable(_) => {
                     // There is no default plan for "CREATE EXTERNAL

@@ -30,12 +30,14 @@ use crate::utils::normalize_ident;
 use arrow_schema::DataType;
 use datafusion_common::{Column, DFSchema, DataFusionError, Result, ScalarValue};
 use datafusion_expr::expr_rewriter::{ExprRewritable, ExprRewriter};
+use datafusion_expr::logical_plan::LogicalPlanBuilder;
 use datafusion_expr::{
     col, expr, lit, AggregateFunction, Between, BinaryExpr, BuiltinScalarFunction, Cast,
     Expr, ExprSchemable, GetIndexedField, Like, Operator, TryCast,
 };
 use sqlparser::ast::{ArrayAgg, Expr as SQLExpr, TrimWhereField, Value};
 use sqlparser::parser::ParserError::ParserError;
+use std::sync::Arc;
 
 impl<'a, S: ContextProvider> SqlToRel<'a, S> {
     pub(crate) fn sql_expr_to_logical_expr(
@@ -82,7 +84,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
     }
 
     /// Rewrite aliases which are not-complete (e.g. ones that only include only table qualifier in a schema.table qualified relation)
-    fn rewrite_partial_qualifier(&self, expr: Expr, schema: &DFSchema) -> Expr {
+    pub fn rewrite_partial_qualifier(&self, expr: Expr, schema: &DFSchema) -> Expr {
         match expr {
             Expr::Column(col) => match &col.relation {
                 Some(q) => {
@@ -292,7 +294,22 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
 
             SQLExpr::Exists { subquery, negated } => self.parse_exists_subquery(*subquery, negated, schema, planner_context),
             SQLExpr::InSubquery { expr, subquery, negated } => self.parse_in_subquery(*expr, *subquery, negated, schema, planner_context),
-            SQLExpr::Subquery(subquery) => self.parse_scalar_subquery(*subquery, schema, planner_context),
+            // SQLExpr::Subquery(subquery) => self.parse_scalar_subquery(*subquery, schema, planner_context),
+            SQLExpr::Subquery(q) => {
+                let with_outer_query_context = self.with_context(|c| c.outer_query_context_schema.push(Arc::new(schema.clone())));
+                let alias_name = format!("__cube_subquery-{}", self.context.subqueries_plans().unwrap_or_default().unwrap_or_default().len());
+                let plan = with_outer_query_context.query_to_plan(*q, planner_context)?;
+                let plan = LogicalPlanBuilder::from(plan)
+                    .alias(alias_name)?
+                    .build()?;
+                let fields = plan.schema().fields();
+                if fields.len() != 1 {
+                    return Err(DataFusionError::Plan(format!("Correlated sub query requires only one column in result set but found: {fields:?}")));
+                }
+                let column = fields.iter().next().unwrap().qualified_column();
+                self.context.add_subquery_plan(plan)?;
+                Ok(Expr::Column(column))
+            }
 
             SQLExpr::ArrayAgg(array_agg) => self.parse_array_agg(array_agg, schema, planner_context),
 

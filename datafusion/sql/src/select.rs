@@ -36,7 +36,7 @@ use datafusion_expr::{
 use sqlparser::ast::{Expr as SQLExpr, WildcardAdditionalOptions};
 use sqlparser::ast::{Select, SelectItem, TableWithJoins};
 use std::collections::HashSet;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 impl<'a, S: ContextProvider> SqlToRel<'a, S> {
     /// Generate a logic plan from an SQL select
@@ -76,13 +76,17 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
         )?;
 
         // process the SELECT expressions, with wildcards expanded.
-        let select_exprs = self.prepare_select_exprs(
+        let with_outer_query_context =
+            self.with_context(|c| c.subqueries_plans = Some(RwLock::new(Vec::new())));
+        let select_exprs = with_outer_query_context.prepare_select_exprs(
             &plan,
             select.projection,
             empty_from,
             planner_context,
             &from_schema,
         )?;
+
+        let plan = with_outer_query_context.wrap_with_subquery_plan_if_necessary(plan)?;
 
         // having and group by clause may reference aliases defined in select projection
         let projected_plan = self.project(plan.clone(), select_exprs.clone())?;
@@ -231,6 +235,26 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
         }
     }
 
+    fn wrap_with_subquery_plan_if_necessary(
+        &self,
+        plan: LogicalPlan,
+    ) -> Result<LogicalPlan> {
+        Ok(if let Some(subqueries) = &self.context.subqueries_plans {
+            let subqueries = subqueries
+                .read()
+                .map_err(|e| DataFusionError::Plan(e.to_string()))?;
+            if !subqueries.is_empty() {
+                LogicalPlanBuilder::from(plan)
+                    .cube_subquery(subqueries.clone())?
+                    .build()?
+            } else {
+                plan
+            }
+        } else {
+            plan
+        })
+    }
+
     fn plan_selection(
         &self,
         selection: Option<SQLExpr>,
@@ -305,74 +329,81 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
         projection: Vec<SelectItem>,
         empty_from: bool,
         planner_context: &mut PlannerContext,
-        from_schema: &DFSchema,
+        _from_schema: &DFSchema,
     ) -> Result<Vec<Expr>> {
-        projection
+        // TODO: refactor CubeSubquery then apply 73ed545
+        let input_schema = plan.schema();
+        let iter = projection
             .into_iter()
-            .map(|expr| {
-                self.sql_select_to_rex(
-                    expr,
-                    plan,
-                    empty_from,
-                    planner_context,
-                    from_schema,
-                )
+            .map(|expr| self.sql_select_to_rex(expr, input_schema, planner_context))
+            .collect::<Result<Vec<Expr>>>()?
+            .into_iter();
+        let plan = self.wrap_with_subquery_plan_if_necessary(plan.clone())?;
+        iter.map(|expr| {
+            Ok(match expr {
+                Expr::Wildcard => {
+                    if empty_from {
+                        return Err(DataFusionError::Plan(
+                            "SELECT * with no tables specified is not valid".to_string(),
+                        ));
+                    }
+                    expand_wildcard(input_schema, &plan)?
+                }
+                Expr::QualifiedWildcard { ref qualifier } => {
+                    expand_qualified_wildcard(qualifier, input_schema)?
+                }
+                _ => vec![normalize_col(expr, &plan)?],
             })
-            .flat_map(|result| match result {
-                Ok(vec) => vec.into_iter().map(Ok).collect(),
-                Err(err) => vec![Err(err)],
-            })
-            .collect::<Result<Vec<Expr>>>()
+        })
+        .flat_map(|res| match res {
+            Ok(v) => v.into_iter().map(Ok).collect(),
+            Err(e) => vec![Err(e)],
+        })
+        .collect::<Result<Vec<Expr>>>()
     }
 
     /// Generate a relational expression from a select SQL expression
     fn sql_select_to_rex(
         &self,
         sql: SelectItem,
-        plan: &LogicalPlan,
-        empty_from: bool,
+        schema: &DFSchema,
         planner_context: &mut PlannerContext,
-        from_schema: &DFSchema,
-    ) -> Result<Vec<Expr>> {
+    ) -> Result<Expr> {
         match sql {
             SelectItem::UnnamedExpr(expr) => {
-                let expr = self.sql_to_expr(expr, plan.schema(), planner_context)?;
-                self.column_reference_ambiguous_check(from_schema, &[expr.clone()])?;
-                Ok(vec![normalize_col(expr, plan)?])
+                self.sql_to_expr(expr, schema, planner_context)
             }
-            SelectItem::ExprWithAlias { expr, alias } => {
-                let select_expr =
-                    self.sql_to_expr(expr, plan.schema(), planner_context)?;
-                self.column_reference_ambiguous_check(
-                    from_schema,
-                    &[select_expr.clone()],
-                )?;
-                let expr = Alias(Box::new(select_expr), normalize_ident(alias));
-                Ok(vec![normalize_col(expr, plan)?])
-            }
+            SelectItem::ExprWithAlias { expr, alias } => Ok(Alias(
+                Box::new(self.sql_to_rex(expr, schema, planner_context)?),
+                normalize_ident(alias),
+            )),
             SelectItem::Wildcard(options) => {
                 Self::check_wildcard_options(options)?;
-
-                if empty_from {
-                    return Err(DataFusionError::Plan(
-                        "SELECT * with no tables specified is not valid".to_string(),
-                    ));
-                }
-                // do not expand from outer schema
-                expand_wildcard(plan.schema().as_ref(), plan)
+                Ok(Expr::Wildcard)
             }
             SelectItem::QualifiedWildcard(ref object_name, options) => {
                 Self::check_wildcard_options(options)?;
-
                 let qualifier = format!("{object_name}");
-                // do not expand from outer schema
-                expand_qualified_wildcard(&qualifier, plan.schema().as_ref())
+                Ok(Expr::QualifiedWildcard { qualifier })
             }
         }
     }
 
+    /// Generate a relational expression from a SQL expression
+    pub fn sql_to_rex(
+        &self,
+        sql: SQLExpr,
+        schema: &DFSchema,
+        planner_context: &mut PlannerContext,
+    ) -> Result<Expr> {
+        let mut expr = self.sql_expr_to_logical_expr(sql, schema, planner_context)?;
+        expr = self.rewrite_partial_qualifier(expr, schema);
+        self.validate_schema_satisfies_exprs(schema, &[expr.clone()])?;
+        Ok(expr)
+    }
+
     /// ambiguous check for unqualifier column
-    fn column_reference_ambiguous_check(
+    fn _column_reference_ambiguous_check(
         &self,
         schema: &DFSchema,
         exprs: &[Expr],
