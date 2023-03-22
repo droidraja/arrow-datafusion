@@ -1167,10 +1167,17 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
         // process window function
         let window_func_exprs = find_window_exprs(&select_exprs_post_aggr);
 
-        let plan = if window_func_exprs.is_empty() {
-            plan
+        let (plan, select_exprs_post_aggr) = if window_func_exprs.is_empty() {
+            (plan, select_exprs_post_aggr)
         } else {
-            LogicalPlanBuilder::window_plan(plan, window_func_exprs)?
+            let select_exprs_post_aggr_and_window = select_exprs_post_aggr
+                .iter()
+                .map(|expr| rebase_expr(expr, &window_func_exprs, &plan))
+                .collect::<Result<Vec<Expr>>>()?;
+            (
+                LogicalPlanBuilder::window_plan(plan, window_func_exprs)?,
+                select_exprs_post_aggr_and_window,
+            )
         };
 
         // final projection
