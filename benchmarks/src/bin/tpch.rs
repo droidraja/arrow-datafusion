@@ -707,7 +707,7 @@ mod tests {
     }
 
     #[test]
-    async fn run_q1() -> Result<()> {
+    fn run_q1() -> Result<()> {
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .thread_stack_size(4 * 1024 * 1024)
