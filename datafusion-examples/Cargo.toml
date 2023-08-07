@@ -29,7 +29,7 @@ publish = false
 
 
 [dev-dependencies]
-arrow-flight = { git = "https://github.com/cube-js/arrow-rs.git", branch = "cube" }
+arrow-flight = { git = "https://github.com/cube-js/arrow-rs.git", branch = "int96-types" }
 datafusion = { path = "../datafusion" }
 prost = "0.7"
 smallvec = { version = "1.6", features = ["union"] }
