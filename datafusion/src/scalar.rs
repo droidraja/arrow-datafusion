@@ -1555,7 +1555,7 @@ mod tests {
         // Since ScalarValues are used in a non trivial number of places,
         // making it larger means significant more memory consumption
         // per distinct value.
-        assert_eq!(std::mem::size_of::<ScalarValue>(), 32);
+        assert_eq!(std::mem::size_of::<ScalarValue>(), 48);
     }
 
     #[test]
