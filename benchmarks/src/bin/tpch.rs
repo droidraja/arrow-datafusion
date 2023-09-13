@@ -973,7 +973,7 @@ mod tests {
         )
     }
 
-    fn block_on_query(n: usize) -> Result<> {
+    fn block_on_query(n: usize) -> Result<()> {
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .thread_stack_size(4 * 1024 * 1024)
