@@ -726,9 +726,14 @@ mod tests {
         run_query(5).await
     }
 
-    #[tokio::test]
-    async fn run_q6() -> Result<()> {
-        run_query(6).await
+    #[test]
+    fn run_q6() -> Result<()> {
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .thread_stack_size(4 * 1024 * 1024)
+            .build()
+            .unwrap()
+            .block_on(async { run_query(6).await })
     }
 
     #[tokio::test]
