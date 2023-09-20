@@ -594,10 +594,39 @@ pub fn interval_coercion(
             | (Interval(_), Timestamp(unit, zone)) => {
                 Some(Timestamp(unit.clone(), zone.clone()))
             }
+            (Date32, Interval(_)) | (Interval(_), Date32) => {
+                // TODO: this is not correct and should be replaced with correctly typed timestamp
+                Some(Date32)
+            }
+            (Date64, Interval(_)) | (Interval(_), Date64) => {
+                // TODO: this is not correct and should be replaced with correctly typed timestamp
+                Some(Date64)
+            }
             _ => None,
         },
         Operator::Multiply => match (lhs_type, rhs_type) {
             (Int64, Interval(itype)) | (Interval(itype), Int64) => {
+                Some(Interval(itype.clone()))
+            }
+            (Int32, Interval(itype)) | (Interval(itype), Int32) => {
+                Some(Interval(itype.clone()))
+            }
+            (Int16, Interval(itype)) | (Interval(itype), Int16) => {
+                Some(Interval(itype.clone()))
+            }
+            (Int8, Interval(itype)) | (Interval(itype), Int8) => {
+                Some(Interval(itype.clone()))
+            }
+            (UInt64, Interval(itype)) | (Interval(itype), UInt64) => {
+                Some(Interval(itype.clone()))
+            }
+            (UInt32, Interval(itype)) | (Interval(itype), UInt32) => {
+                Some(Interval(itype.clone()))
+            }
+            (UInt16, Interval(itype)) | (Interval(itype), UInt16) => {
+                Some(Interval(itype.clone()))
+            }
+            (UInt8, Interval(itype)) | (Interval(itype), UInt8) => {
                 Some(Interval(itype.clone()))
             }
             _ => None,
