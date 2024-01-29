@@ -158,19 +158,19 @@ where
                 TimeUnit::Microsecond => 1_000_000,
                 TimeUnit::Nanosecond => 1_000_000_000,
             } as f64;
-            unary(&array, |n| {
+            unary(array, |n| {
                 let n: i64 = n.into();
                 n as f64 / scale
             })
         }
         DataType::Date32 => {
             let seconds_in_a_day = 86400_f64;
-            unary(&array, |n| {
+            unary(array, |n| {
                 let n: i64 = n.into();
                 n as f64 * seconds_in_a_day
             })
         }
-        DataType::Date64 => unary(&array, |n| {
+        DataType::Date64 => unary(array, |n| {
             let n: i64 = n.into();
             n as f64 / 1_000_f64
         }),
