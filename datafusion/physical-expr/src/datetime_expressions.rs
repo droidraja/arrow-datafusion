@@ -18,6 +18,7 @@
 //! DateTime expressions
 
 use arrow::array::{Int64Array, IntervalDayTimeArray, IntervalYearMonthArray};
+use arrow::compute::cast;
 use arrow::{
     array::{Array, ArrayRef, GenericStringArray, PrimitiveArray, StringOffsetSizeTrait},
     compute::kernels::cast_utils::string_to_timestamp_nanos,
@@ -481,15 +482,15 @@ pub fn date_trunc(args: &[ColumnarValue]) -> Result<ColumnarValue> {
 }
 
 macro_rules! extract_date_part {
-    ($ARRAY: expr, $FN:expr) => {
+    ($ARRAY: expr, $FN:expr, $RT: expr) => {
         match $ARRAY.data_type() {
             DataType::Date32 => {
                 let array = $ARRAY.as_any().downcast_ref::<Date32Array>().unwrap();
-                Ok($FN(array)?)
+                Ok($FN(array).map(|v| cast(&(Arc::new(v) as ArrayRef), &$RT))?)
             }
             DataType::Date64 => {
                 let array = $ARRAY.as_any().downcast_ref::<Date64Array>().unwrap();
-                Ok($FN(array)?)
+                Ok($FN(array).map(|v| cast(&(Arc::new(v) as ArrayRef), &$RT))?)
             }
             DataType::Timestamp(time_unit, None) => match time_unit {
                 TimeUnit::Second => {
@@ -497,28 +498,28 @@ macro_rules! extract_date_part {
                         .as_any()
                         .downcast_ref::<TimestampSecondArray>()
                         .unwrap();
-                    Ok($FN(array)?)
+                    Ok($FN(array).map(|v| cast(&(Arc::new(v) as ArrayRef), &$RT))?)
                 }
                 TimeUnit::Millisecond => {
                     let array = $ARRAY
                         .as_any()
                         .downcast_ref::<TimestampMillisecondArray>()
                         .unwrap();
-                    Ok($FN(array)?)
+                    Ok($FN(array).map(|v| cast(&(Arc::new(v) as ArrayRef), &$RT))?)
                 }
                 TimeUnit::Microsecond => {
                     let array = $ARRAY
                         .as_any()
                         .downcast_ref::<TimestampMicrosecondArray>()
                         .unwrap();
-                    Ok($FN(array)?)
+                    Ok($FN(array).map(|v| cast(&(Arc::new(v) as ArrayRef), &$RT))?)
                 }
                 TimeUnit::Nanosecond => {
                     let array = $ARRAY
                         .as_any()
                         .downcast_ref::<TimestampNanosecondArray>()
                         .unwrap();
-                    Ok($FN(array)?)
+                    Ok($FN(array).map(|v| cast(&(Arc::new(v) as ArrayRef), &$RT))?)
                 }
             },
             datatype => Err(DataFusionError::Internal(format!(
@@ -554,16 +555,19 @@ pub fn date_part(args: &[ColumnarValue]) -> Result<ColumnarValue> {
     };
 
     let arr = match date_part.to_lowercase().as_str() {
-        "doy" => extract_date_part!(array, cube_ext::temporal::doy),
-        "dow" => extract_date_part!(array, cube_ext::temporal::dow),
-        "year" => extract_date_part!(array, temporal::year),
-        "quarter" => extract_date_part!(array, temporal::quarter),
-        "month" => extract_date_part!(array, temporal::month),
-        "week" => extract_date_part!(array, temporal::week),
-        "day" => extract_date_part!(array, temporal::day),
-        "hour" => extract_date_part!(array, temporal::hour),
-        "minute" => extract_date_part!(array, temporal::minute),
-        "second" => extract_date_part!(array, temporal::second),
+        "doy" => extract_date_part!(array, cube_ext::temporal::doy, DataType::Int32),
+        "dow" => extract_date_part!(array, cube_ext::temporal::dow, DataType::Int32),
+        "year" => extract_date_part!(array, temporal::year, DataType::Int32),
+        "quarter" => extract_date_part!(array, temporal::quarter, DataType::Int32),
+        "month" => extract_date_part!(array, temporal::month, DataType::Int32),
+        "week" => extract_date_part!(array, temporal::week, DataType::Int32),
+        "day" => extract_date_part!(array, temporal::day, DataType::Int32),
+        "hour" => extract_date_part!(array, temporal::hour, DataType::Int32),
+        "minute" => extract_date_part!(array, temporal::minute, DataType::Int32),
+        "second" => extract_date_part!(array, temporal::second, DataType::Int32),
+        "epoch" => {
+            extract_date_part!(array, cube_ext::temporal::epoch, DataType::Float64)
+        }
         _ => Err(DataFusionError::Execution(format!(
             "Date part '{}' not supported",
             date_part
@@ -571,12 +575,9 @@ pub fn date_part(args: &[ColumnarValue]) -> Result<ColumnarValue> {
     }?;
 
     Ok(if is_scalar {
-        ColumnarValue::Scalar(ScalarValue::try_from_array(
-            &(Arc::new(arr) as ArrayRef),
-            0,
-        )?)
+        ColumnarValue::Scalar(ScalarValue::try_from_array(&arr?, 0)?)
     } else {
-        ColumnarValue::Array(Arc::new(arr))
+        ColumnarValue::Array(arr?)
     })
 }
 

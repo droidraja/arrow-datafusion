@@ -15,8 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use arrow::array::{Array, Int32Array, Int32Builder, PrimitiveArray};
-use arrow::datatypes::{ArrowNumericType, ArrowTemporalType, DataType};
+use arrow::array::{Array, Float64Array, Int32Array, Int32Builder, PrimitiveArray};
+use arrow::compute::kernels::arity::unary;
+use arrow::datatypes::{ArrowNumericType, ArrowTemporalType, DataType, TimeUnit};
 use arrow::error::{ArrowError, Result};
 
 use chrono::format::strftime::StrftimeItems;
@@ -142,6 +143,42 @@ where
     }
 
     Ok(b.finish())
+}
+
+pub fn epoch<T>(array: &PrimitiveArray<T>) -> Result<Float64Array>
+where
+    T: ArrowTemporalType + ArrowNumericType,
+    i64: From<T::Native>,
+{
+    let b = match array.data_type() {
+        DataType::Timestamp(tu, _) => {
+            let scale = match tu {
+                TimeUnit::Second => 1,
+                TimeUnit::Millisecond => 1_000,
+                TimeUnit::Microsecond => 1_000_000,
+                TimeUnit::Nanosecond => 1_000_000_000,
+            } as f64;
+            unary(&array, |n| {
+                let n: i64 = n.into();
+                n as f64 / scale
+            })
+        }
+        DataType::Date32 => {
+            let seconds_in_a_day = 86400_f64;
+            unary(&array, |n| {
+                let n: i64 = n.into();
+                n as f64 * seconds_in_a_day
+            })
+        }
+        DataType::Date64 => unary(&array, |n| {
+            let n: i64 = n.into();
+            n as f64 / 1_000_f64
+        }),
+        _ => {
+            return_compute_error_with!("Can not convert {:?} to epoch", array.data_type())
+        }
+    };
+    Ok(b)
 }
 
 trait ChronoDateLikeExt {
