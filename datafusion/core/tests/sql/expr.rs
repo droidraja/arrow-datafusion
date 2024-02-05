@@ -991,6 +991,19 @@ async fn test_extract_date_part() -> Result<()> {
         "date_part('doy', to_timestamp('2020-02-01T00:00:00+00:00'))",
         "32"
     );
+    // EPOCH
+    test_expression!(
+        "EXTRACT(epoch FROM to_timestamp('2020-01-01T23:01:01.22+00:00'))",
+        "1577919661.22"
+    );
+    test_expression!(
+        "date_part('epoch', to_timestamp('2020-01-01T23:01:01.22+00:00'))",
+        "1577919661.22"
+    );
+    test_expression!(
+        "date_part('epoch', CAST('2020-01-01' AS DATE))",
+        "1577836800"
+    );
 
     // DOW
     test_expression!(
