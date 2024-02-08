@@ -26,7 +26,7 @@ use crate::error::DataFusionError;
 use crate::logical_plan::dfschema::DFSchemaRef;
 use crate::sql::parser::FileType;
 use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
-use datafusion_common::DFSchema;
+use datafusion_common::{DFField, DFSchema};
 use std::fmt::Formatter;
 use std::{
     collections::HashSet,
@@ -282,13 +282,16 @@ pub struct Subquery {
 pub enum SubqueryType {
     /// Scalar (SELECT, WHERE) evaluating to one value
     Scalar,
-    // This will be extended with `Exists` and `AnyAll` types.
+    /// EXISTS(...) evaluating to true if at least one row was produced
+    Exists,
+    // This will be extended with `AnyAll` type.
 }
 
 impl Display for SubqueryType {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let subquery_type = match self {
             SubqueryType::Scalar => "Scalar",
+            SubqueryType::Exists => "Exists",
         };
         write!(f, "{}", subquery_type)
     }
@@ -315,7 +318,22 @@ impl Subquery {
     pub fn transform_dfschema(schema: &DFSchema, typ: SubqueryType) -> DFSchema {
         match typ {
             SubqueryType::Scalar => schema.clone(),
-            // Schema will be transformed for `Exists` and `AnyAll`
+            SubqueryType::Exists => {
+                let new_fields = schema
+                    .fields()
+                    .iter()
+                    .map(|field| {
+                        let new_field = Subquery::transform_field(field.field(), typ);
+                        if let Some(qualifier) = field.qualifier() {
+                            DFField::from_qualified(qualifier, new_field)
+                        } else {
+                            DFField::from(new_field)
+                        }
+                    })
+                    .collect();
+                DFSchema::new_with_metadata(new_fields, schema.metadata().clone())
+                    .unwrap()
+            } // Schema will be transformed for `AnyAll` as well
         }
     }
 
@@ -323,7 +341,8 @@ impl Subquery {
     pub fn transform_field(field: &Field, typ: SubqueryType) -> Field {
         match typ {
             SubqueryType::Scalar => field.clone(),
-            // Field will be transformed for `Exists` and `AnyAll`
+            SubqueryType::Exists => Field::new(field.name(), DataType::Boolean, false),
+            // Field will be transformed for `AnyAll` as well
         }
     }
 }

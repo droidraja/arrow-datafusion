@@ -2300,11 +2300,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                 })
             }
 
-            // FIXME: Exists is unsupported but all the queries we need return false
-            SQLExpr::Exists(_) => {
-                warn!("EXISTS(...) is not supported yet. Replacing with scalar `false` value.");
-                Ok(Expr::Literal(ScalarValue::Boolean(Some(false))))
-            }
+            SQLExpr::Exists(q) => self.subquery_to_plan(q, SubqueryType::Exists, schema),
 
             // FIXME: ArraySubquery is unsupported but all the queries we need return empty array
             SQLExpr::ArraySubquery(_) => {
@@ -5069,6 +5065,22 @@ mod tests {
                         \n        TableScan: person projection=None\
                         \n        Projection: ^#person.id, alias=__subquery-0\
                         \n          EmptyRelation\
+                        \n    Projection: ^#person.id, alias=__subquery-1\
+                        \n      EmptyRelation";
+        quick_test(sql, expected);
+    }
+
+    #[test]
+    fn subquery_exists() {
+        let sql = "select person.id, exists(select person.id) from person where exists(select 1 where false)";
+        let expected = "Projection: #person.id, #__subquery-1.person.id\
+                        \n  Subquery: types=[Exists]\
+                        \n    Filter: #__subquery-0.Int64(1)\
+                        \n      Subquery: types=[Exists]\
+                        \n        TableScan: person projection=None\
+                        \n        Projection: Int64(1), alias=__subquery-0\
+                        \n          Filter: Boolean(false)\
+                        \n            EmptyRelation\
                         \n    Projection: ^#person.id, alias=__subquery-1\
                         \n      EmptyRelation";
         quick_test(sql, expected);

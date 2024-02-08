@@ -30,7 +30,7 @@ use std::task::{Context, Poll};
 use crate::error::{DataFusionError, Result};
 use crate::logical_plan::{Subquery, SubqueryType};
 use crate::physical_plan::{DisplayFormatType, ExecutionPlan, Partitioning};
-use arrow::array::new_null_array;
+use arrow::array::{new_null_array, BooleanArray};
 use arrow::datatypes::{Schema, SchemaRef};
 use arrow::error::{ArrowError, Result as ArrowResult};
 use arrow::record_batch::RecordBatch;
@@ -215,12 +215,23 @@ impl ExecutionPlan for SubqueryExec {
                                             .to_string(),
                                     )),
                                 },
+                                SubqueryType::Exists => match subquery_batch
+                                    .column(0)
+                                    .len()
+                                {
+                                    0 => subquery_arrays[subquery_i]
+                                        .push(Arc::new(BooleanArray::from(vec![false]))),
+                                    _ => subquery_arrays[subquery_i]
+                                        .push(Arc::new(BooleanArray::from(vec![true]))),
+                                },
                             };
                         } else {
                             match subquery_type {
                                 SubqueryType::Scalar => {
                                     subquery_arrays[subquery_i].push(null_array())
                                 }
+                                SubqueryType::Exists => subquery_arrays[subquery_i]
+                                    .push(Arc::new(BooleanArray::from(vec![false]))),
                             };
                         }
                     }

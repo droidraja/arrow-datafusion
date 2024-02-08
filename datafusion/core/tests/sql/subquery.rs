@@ -149,6 +149,27 @@ async fn subquery_select_and_where_with_from() -> Result<()> {
 }
 
 #[tokio::test]
+async fn subquery_exists() -> Result<()> {
+    let ctx = SessionContext::new();
+    register_aggregate_simple_csv(&ctx).await?;
+
+    let sql = "SELECT DISTINCT c1 FROM aggregate_simple o WHERE EXISTS(SELECT 1 FROM aggregate_simple p WHERE o.c1 * 2 = p.c1) ORDER BY c1";
+    let actual = execute_to_batches(&ctx, sql).await;
+
+    let expected = vec![
+        "+---------+",
+        "| c1      |",
+        "+---------+",
+        "| 0.00001 |",
+        "| 0.00002 |",
+        "+---------+",
+    ];
+    assert_batches_eq!(expected, &actual);
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn subquery_projection_pushdown() -> Result<()> {
     let ctx = SessionContext::new();
     register_aggregate_simple_csv(&ctx).await?;
