@@ -1574,11 +1574,16 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
         left: SQLExpr,
         op: BinaryOperator,
         right: SQLExpr,
+        all: bool,
         schema: &DFSchema,
     ) -> Result<Expr> {
         let operator = match op {
             BinaryOperator::Eq => Ok(Operator::Eq),
             BinaryOperator::NotEq => Ok(Operator::NotEq),
+            BinaryOperator::Lt => Ok(Operator::Lt),
+            BinaryOperator::LtEq => Ok(Operator::LtEq),
+            BinaryOperator::Gt => Ok(Operator::Gt),
+            BinaryOperator::GtEq => Ok(Operator::GtEq),
             _ => Err(DataFusionError::NotImplemented(format!(
                 "Unsupported SQL ANY operator {:?}",
                 op
@@ -1589,6 +1594,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
             left: Box::new(self.sql_expr_to_logical_expr(left, schema)?),
             op: operator,
             right: Box::new(self.sql_expr_to_logical_expr(right, schema)?),
+            all,
         })
     }
 
@@ -1601,13 +1607,10 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
     ) -> Result<Expr> {
         match right {
             SQLExpr::AnyOp(any_expr) => {
-                return self.parse_sql_binary_any(left, op, *any_expr, schema);
+                return self.parse_sql_binary_any(left, op, *any_expr, false, schema);
             }
-            SQLExpr::AllOp(_) => {
-                return Err(DataFusionError::NotImplemented(format!(
-                    "Unsupported SQL ALL operator {:?}",
-                    right
-                )));
+            SQLExpr::AllOp(any_expr) => {
+                return self.parse_sql_binary_any(left, op, *any_expr, true, schema);
             }
             _ => {}
         };
@@ -2298,7 +2301,15 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                     expr: Box::new(self.sql_expr_to_logical_expr(*expr, schema)?),
                     key: Box::new(Expr::Literal(ScalarValue::Utf8(Some(field.value)))),
                 })
-            }
+            },
+            //SQLExpr::AnyAllSubquery(q) => self.subquery_to_plan(q, SubqueryType::AnyAll, schema),
+
+            // InSubquery uses `AnyAll` since it's expected to be replaced
+            SQLExpr::InSubquery { expr, subquery, negated } => Ok(Expr::InSubquery {
+                expr: Box::new(self.sql_expr_to_logical_expr(*expr, schema)?),
+                subquery: Box::new(self.subquery_to_plan(subquery, SubqueryType::AnyAll, schema)?),
+                negated,
+            }),
 
             SQLExpr::Exists(q) => self.subquery_to_plan(q, SubqueryType::Exists, schema),
 
@@ -5083,6 +5094,44 @@ mod tests {
                         \n            EmptyRelation\
                         \n    Projection: ^#person.id, alias=__subquery-1\
                         \n      EmptyRelation";
+        quick_test(sql, expected);
+    }
+
+    #[ignore]
+    #[test]
+    fn subquery_any() {
+        let sql = "select person.id from person where person.id = any(select person.id from person)";
+        let expected = "Projection: #person.id\
+                        \n  Filter: #person.id = ANY(#__subquery-0.person.id)\
+                        \n    Subquery: types=[AnyAll]\
+                        \n      TableScan: person projection=None\
+                        \n      Projection: ^#person.id, alias=__subquery-0\
+                        \n        TableScan: person projection=None";
+        quick_test(sql, expected);
+    }
+
+    #[ignore]
+    #[test]
+    fn subquery_all() {
+        let sql = "select person.id, person.id = all(select person.id) from person";
+        let expected =
+            "Projection: #person.id, #person.id = ALL(#__subquery-0.person.id)\
+                        \n  Subquery: types=[AnyAll]\
+                        \n    TableScan: person projection=None\
+                        \n    Projection: ^#person.id, alias=__subquery-0\
+                        \n      EmptyRelation";
+        quick_test(sql, expected);
+    }
+
+    #[test]
+    fn subquery_in() {
+        let sql =
+            "select person.id, person.id in (select person.id from person) from person";
+        let expected = "Projection: #person.id, #person.id IN (#__subquery-0.person.id)\
+                        \n  Subquery: types=[AnyAll]\
+                        \n    TableScan: person projection=None\
+                        \n    Projection: ^#person.id, alias=__subquery-0\
+                        \n      TableScan: person projection=None";
         quick_test(sql, expected);
     }
 

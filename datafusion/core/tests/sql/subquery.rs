@@ -189,3 +189,49 @@ async fn subquery_projection_pushdown() -> Result<()> {
 
     Ok(())
 }
+// TODO: subquery ignores WHERE for some reason and returns all data
+#[ignore]
+#[tokio::test]
+async fn subquery_any() -> Result<()> {
+    let ctx = SessionContext::new();
+    register_aggregate_simple_csv(&ctx).await?;
+
+    let sql = "SELECT DISTINCT c1 FROM aggregate_simple o WHERE c1 = ANY(SELECT c1 FROM aggregate_simple p WHERE c3) ORDER BY c1";
+    let actual = execute_to_batches(&ctx, sql).await;
+
+    let expected = vec![
+        "+---------+",
+        "| c1      |",
+        "+---------+",
+        "| 0.00001 |",
+        "| 0.00003 |",
+        "| 0.00005 |",
+        "+---------+",
+    ];
+    assert_batches_eq!(expected, &actual);
+
+    Ok(())
+}
+
+// TODO: subqueries don't work with ORDER BY
+#[ignore]
+#[tokio::test]
+async fn subquery_all() -> Result<()> {
+    let ctx = SessionContext::new();
+    register_aggregate_simple_csv(&ctx).await?;
+
+    let sql = "SELECT DISTINCT c1 FROM aggregate_simple o WHERE c1 > ALL(SELECT DISTINCT c1 FROM aggregate_simple p ORDER BY c1 LIMIT 3) ORDER BY c1";
+    let actual = execute_to_batches(&ctx, sql).await;
+
+    let expected = vec![
+        "+---------+",
+        "| c1      |",
+        "+---------+",
+        "| 0.00004 |",
+        "| 0.00005 |",
+        "+---------+",
+    ];
+    assert_batches_eq!(expected, &actual);
+
+    Ok(())
+}
