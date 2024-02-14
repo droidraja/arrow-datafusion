@@ -1706,6 +1706,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
             SQLExpr::Value(Value::Number(n, _)) => parse_sql_number(&n),
             SQLExpr::Value(Value::SingleQuotedString(ref s)) => Ok(lit(s.clone())),
             SQLExpr::Value(Value::EscapedStringLiteral(ref s)) => Ok(lit(s.clone())),
+            SQLExpr::Value(Value::UnicodeEscapedStringLiteral(ref s)) => parse_unicode_escaped_string(s, '\\'),
             SQLExpr::Value(Value::Boolean(n)) => Ok(lit(n)),
             SQLExpr::Value(Value::Null) => Ok(Expr::Literal(ScalarValue::Null)),
             SQLExpr::Extract { field, expr } => Ok(Expr::ScalarFunction {
@@ -2859,6 +2860,53 @@ fn parse_sql_number(n: &str) -> Result<Expr> {
     }
 }
 
+fn parse_unicode_escaped_string(s: &str, delimiter: char) -> Result<Expr> {
+    let mut result = String::new();
+    let mut chars = s.char_indices().peekable();
+    while let Some((i, c)) = chars.next() {
+        if c == delimiter {
+            if let Some((_, next)) = chars.peek() {
+                if next == &delimiter {
+                    result.push(delimiter);
+                    chars.next();
+                } else {
+                    let (parsed, len) =
+                        parse_unicode_escaped_point(&s[i + 1..], delimiter)?;
+                    result.push(parsed);
+                    chars.nth(len - 1);
+                }
+            } else {
+                return Err(invalid_unicode_escape_error(s, delimiter));
+            }
+        } else {
+            result.push(c)
+        }
+    }
+    Ok(lit(result))
+}
+
+fn parse_unicode_escaped_point(s: &str, delimiter: char) -> Result<(char, usize)> {
+    let (point_start, point_end) = if s.starts_with('+') { (1, 7) } else { (0, 4) };
+    if point_end <= s.len() {
+        let byte = u32::from_str_radix(&s[point_start..point_end], 16)
+            .map_err(|_| invalid_unicode_escape_error(s, delimiter))?;
+        if let Some(c) = char::from_u32(byte) {
+            Ok((c, point_end))
+        } else {
+            Err(invalid_unicode_escape_error(s, delimiter))
+        }
+    } else {
+        Err(invalid_unicode_escape_error(s, delimiter))
+    }
+}
+
+fn invalid_unicode_escape_error(s: &str, delimiter: char) -> DataFusionError {
+    DataFusionError::SQL(ParserError(format!(
+        "Invalid Unicode escape in {}. Unicode escapes must be {}XXXX or {}+XXXXXX",
+        s, delimiter, delimiter,
+    )))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::datasource::empty::EmptyTable;
@@ -2867,6 +2915,36 @@ mod tests {
 
     use super::*;
 
+    #[test]
+    fn test_parse_unicode_escaped_string() {
+        assert_eq!(
+            parse_unicode_escaped_string("pppp", '\\').unwrap(),
+            Expr::Literal(ScalarValue::Utf8(Some("pppp".to_string())))
+        );
+        assert_eq!(
+            parse_unicode_escaped_string("d\\0061t\\+000061", '\\').unwrap(),
+            Expr::Literal(ScalarValue::Utf8(Some("data".to_string())))
+        );
+        assert_eq!(
+            parse_unicode_escaped_string("d\\0061\\\\t\\+000061", '\\').unwrap(),
+            Expr::Literal(ScalarValue::Utf8(Some("da\\ta".to_string())))
+        );
+        assert_eq!(
+            parse_unicode_escaped_string("d!0061t\\!+000061\\", '!').unwrap(),
+            Expr::Literal(ScalarValue::Utf8(Some("dat\\a\\".to_string())))
+        );
+        assert_eq!(
+            parse_unicode_escaped_string("!!d!0061!!t\\!+000061\\", '!').unwrap(),
+            Expr::Literal(ScalarValue::Utf8(Some("!da!t\\a\\".to_string())))
+        );
+        assert_eq!(
+            parse_unicode_escaped_string("d!0061t\\!+000061\\", '!').unwrap(),
+            Expr::Literal(ScalarValue::Utf8(Some("dat\\a\\".to_string())))
+        );
+        assert!(parse_unicode_escaped_string("d\\0061t\\+000061\\", '\\').is_err());
+        assert!(parse_unicode_escaped_string("d\\0061t\\+061", '\\').is_err());
+        assert!(parse_unicode_escaped_string("d\\H061t\\+061", '\\').is_err());
+    }
     #[test]
     fn select_no_relation() {
         quick_test(
