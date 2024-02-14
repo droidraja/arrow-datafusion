@@ -722,6 +722,14 @@ async fn test_like() -> Result<()> {
 }
 
 #[tokio::test]
+async fn test_unicode_escaped() -> Result<()> {
+    test_expression!("U&'pppp'", "ppp");
+    test_expression!("U&'d\\0061t\\+000061\'", "data");
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_ilike() -> Result<()> {
     test_expression!("'test' ILIKE '%Es%'", "true");
     test_expression!("'payment' NOT ILIKE 'PAYMENT'", "false");
