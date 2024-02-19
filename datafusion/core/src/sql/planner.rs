@@ -1824,12 +1824,16 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                     // compound indenfiers, but this is not a compound
                     // identifier. (e.g. it is "foo.bar" not foo.bar)
 
-                    if let Some(f) = self.context.outer_query_context_schema.iter().find_map(|s| s.field_with_unqualified_name(&id.value).ok()) {
-                        return Ok(Expr::OuterColumn(f.data_type().clone(), Column {
-                            relation: None,
-                            name: id.value,
-                        }))
+                    //We look into outer schema only if column don't exists in current schema
+                    if schema.field_with_unqualified_name(&id.value).is_err() {
+                        if let Some(f) = self.context.outer_query_context_schema.iter().find_map(|s| s.field_with_unqualified_name(&id.value).ok()) {
+                            return Ok(Expr::OuterColumn(f.data_type().clone(), Column {
+                                relation: None,
+                                name: id.value,
+                            }))
+                        }
                     }
+
 
                     Ok(Expr::Column(Column {
                         relation: None,
@@ -2302,7 +2306,9 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                     key: Box::new(Expr::Literal(ScalarValue::Utf8(Some(field.value)))),
                 })
             },
-            //SQLExpr::AnyAllSubquery(q) => self.subquery_to_plan(q, SubqueryType::AnyAll, schema),
+            SQLExpr::AnyAllSubquery(q) => { 
+                self.subquery_to_plan(q, SubqueryType::AnyAll, schema)
+            }
 
             // InSubquery uses `AnyAll` since it's expected to be replaced
             SQLExpr::InSubquery { expr, subquery, negated } => Ok(Expr::InSubquery {
@@ -2701,8 +2707,13 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
             }
         }
 
-        let data_types: HashSet<DataType> =
-            values.iter().map(|e| e.get_datatype()).collect();
+        let data_types: HashSet<DataType> = values
+            .iter()
+            .filter_map(|e| match e.get_datatype() {
+                DataType::Null => None,
+                _ => Some(e.get_datatype()),
+            })
+            .collect();
 
         if data_types.is_empty() {
             Ok(Expr::Literal(ScalarValue::List(
@@ -2715,7 +2726,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                 data_types,
             )))
         } else {
-            let data_type = values[0].get_datatype();
+            let data_type = data_types.iter().next().unwrap().clone();
 
             Ok(Expr::Literal(ScalarValue::List(
                 Some(Box::new(values)),
@@ -5097,7 +5108,6 @@ mod tests {
         quick_test(sql, expected);
     }
 
-    #[ignore]
     #[test]
     fn subquery_any() {
         let sql = "select person.id from person where person.id = any(select person.id from person)";
@@ -5110,7 +5120,6 @@ mod tests {
         quick_test(sql, expected);
     }
 
-    #[ignore]
     #[test]
     fn subquery_all() {
         let sql = "select person.id, person.id = all(select person.id) from person";

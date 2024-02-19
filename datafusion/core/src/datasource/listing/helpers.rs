@@ -80,10 +80,14 @@ impl ExpressionVisitor for ApplicabilityVisitor<'_> {
                 *self.is_applicable &= self.col_names.contains(name);
                 Recursion::Stop(self) // leaf node anyway
             }
+            Expr::OuterColumn(_, _) => {
+                *self.is_applicable = false;
+                Recursion::Stop(self) // leaf node anyway
+            }
             Expr::Literal(_)
             | Expr::Alias(_, _)
             | Expr::ScalarVariable(_, _)
-            | Expr::OuterColumn(_, _)
+            //| Expr::OuterColumn(_, _)
             | Expr::Not(_)
             | Expr::IsNotNull(_)
             | Expr::IsNull(_)

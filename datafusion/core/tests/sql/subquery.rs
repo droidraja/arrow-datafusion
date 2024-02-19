@@ -189,8 +189,6 @@ async fn subquery_projection_pushdown() -> Result<()> {
 
     Ok(())
 }
-// TODO: subquery ignores WHERE for some reason and returns all data
-#[ignore]
 #[tokio::test]
 async fn subquery_any() -> Result<()> {
     let ctx = SessionContext::new();
@@ -213,8 +211,6 @@ async fn subquery_any() -> Result<()> {
     Ok(())
 }
 
-// TODO: subqueries don't work with ORDER BY
-#[ignore]
 #[tokio::test]
 async fn subquery_all() -> Result<()> {
     let ctx = SessionContext::new();
