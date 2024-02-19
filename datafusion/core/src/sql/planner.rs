@@ -2306,9 +2306,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                     key: Box::new(Expr::Literal(ScalarValue::Utf8(Some(field.value)))),
                 })
             },
-            SQLExpr::AnyAllSubquery(q) => { 
-                self.subquery_to_plan(q, SubqueryType::AnyAll, schema)
-            }
+            SQLExpr::AnyAllSubquery(q) => self.subquery_to_plan(q, SubqueryType::AnyAll, schema),
 
             // InSubquery uses `AnyAll` since it's expected to be replaced
             SQLExpr::InSubquery { expr, subquery, negated } => Ok(Expr::InSubquery {
