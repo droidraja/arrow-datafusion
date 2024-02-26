@@ -233,11 +233,54 @@ async fn subquery_all() -> Result<()> {
 }
 
 #[tokio::test]
-async fn subquery_all_cte() -> Result<()> {
+async fn subquery_in() -> Result<()> {
     let ctx = SessionContext::new();
     register_aggregate_simple_csv(&ctx).await?;
 
-    let sql = "WITH cte as (SELECT c1 v FROM aggregate_simple where c3) SELECT DISTINCT c1 FROM aggregate_simple o WHERE c1 = ANY (SELECT v FROM cte) ORDER BY c1";
+    let sql = "SELECT DISTINCT c1 FROM aggregate_simple o WHERE c1 IN (SELECT c1 FROM aggregate_simple p WHERE c3) ORDER BY c1";
+    let actual = execute_to_batches(&ctx, sql).await;
+
+    let expected = vec![
+        "+---------+",
+        "| c1      |",
+        "+---------+",
+        "| 0.00001 |",
+        "| 0.00003 |",
+        "| 0.00005 |",
+        "+---------+",
+    ];
+    assert_batches_eq!(expected, &actual);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn subquery_in_cte() -> Result<()> {
+    let ctx = SessionContext::new();
+    register_aggregate_simple_csv(&ctx).await?;
+
+    let sql = "WITH cte as (SELECT c1 v FROM aggregate_simple where c3) SELECT DISTINCT c1 FROM aggregate_simple o WHERE c1 in (SELECT v FROM cte) ORDER BY c1";
+    let actual = execute_to_batches(&ctx, sql).await;
+
+    let expected = vec![
+        "+---------+",
+        "| c1      |",
+        "+---------+",
+        "| 0.00001 |",
+        "| 0.00003 |",
+        "| 0.00005 |",
+        "+---------+",
+    ];
+    assert_batches_eq!(expected, &actual);
+
+    Ok(())
+}
+#[tokio::test]
+async fn subquery_not_in_cte() -> Result<()> {
+    let ctx = SessionContext::new();
+    register_aggregate_simple_csv(&ctx).await?;
+
+    let sql = "WITH cte as (SELECT c1 v FROM aggregate_simple where c3 = false) SELECT DISTINCT c1 FROM aggregate_simple o WHERE c1 not in (SELECT v FROM cte) ORDER BY c1";
     let actual = execute_to_batches(&ctx, sql).await;
 
     let expected = vec![

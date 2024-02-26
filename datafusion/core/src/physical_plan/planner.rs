@@ -1327,6 +1327,30 @@ pub fn create_physical_expr(
             )?;
             any(lhs, *op, rhs, *all, input_schema)
         }
+        Expr::InSubquery {
+            expr,
+            subquery,
+            negated,
+        } => {
+            let lhs = create_physical_expr(
+                expr,
+                input_dfschema,
+                input_schema,
+                execution_props,
+            )?;
+            let rhs = create_physical_expr(
+                subquery,
+                input_dfschema,
+                input_schema,
+                execution_props,
+            )?;
+            let (op, all) = if *negated {
+                (Operator::NotEq, true)
+            } else {
+                (Operator::Eq, false)
+            };
+            any(lhs, op, rhs, all, input_schema)
+        }
         Expr::InList {
             expr,
             list,
