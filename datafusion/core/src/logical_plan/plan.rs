@@ -26,7 +26,7 @@ use crate::error::DataFusionError;
 use crate::logical_plan::dfschema::DFSchemaRef;
 use crate::sql::parser::FileType;
 use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
-use datafusion_common::DFSchema;
+use datafusion_common::{DFField, DFSchema};
 use std::fmt::Formatter;
 use std::{
     collections::HashSet,
@@ -267,22 +267,83 @@ pub struct Limit {
 /// Evaluates correlated sub queries
 #[derive(Clone)]
 pub struct Subquery {
-    /// The list of sub queries
-    pub subqueries: Vec<LogicalPlan>,
     /// The incoming logical plan
     pub input: Arc<LogicalPlan>,
+    /// The list of sub queries
+    pub subqueries: Vec<LogicalPlan>,
+    /// The list of subquery types
+    pub types: Vec<SubqueryType>,
     /// The schema description of the output
     pub schema: DFSchemaRef,
 }
 
+/// Subquery type
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum SubqueryType {
+    /// Scalar (SELECT, WHERE) evaluating to one value
+    Scalar,
+    /// EXISTS(...) evaluating to true if at least one row was produced
+    Exists,
+    // This will be extended with `AnyAll` type.
+}
+
+impl Display for SubqueryType {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        let subquery_type = match self {
+            SubqueryType::Scalar => "Scalar",
+            SubqueryType::Exists => "Exists",
+        };
+        write!(f, "{}", subquery_type)
+    }
+}
+
 impl Subquery {
     /// Merge schema of main input and correlated subquery columns
-    pub fn merged_schema(input: &LogicalPlan, subqueries: &[LogicalPlan]) -> DFSchema {
-        subqueries.iter().fold((**input.schema()).clone(), |a, b| {
-            let mut res = a;
-            res.merge(b.schema());
-            res
-        })
+    pub fn merged_schema(
+        input: &LogicalPlan,
+        subqueries: &[LogicalPlan],
+        types: &[SubqueryType],
+    ) -> DFSchema {
+        subqueries.iter().zip(types.iter()).fold(
+            (**input.schema()).clone(),
+            |schema, (plan, typ)| {
+                let mut schema = schema;
+                schema.merge(&Self::transform_dfschema(plan.schema(), *typ));
+                schema
+            },
+        )
+    }
+
+    /// Transform DataFusion schema according to subquery type
+    pub fn transform_dfschema(schema: &DFSchema, typ: SubqueryType) -> DFSchema {
+        match typ {
+            SubqueryType::Scalar => schema.clone(),
+            SubqueryType::Exists => {
+                let new_fields = schema
+                    .fields()
+                    .iter()
+                    .map(|field| {
+                        let new_field = Subquery::transform_field(field.field(), typ);
+                        if let Some(qualifier) = field.qualifier() {
+                            DFField::from_qualified(qualifier, new_field)
+                        } else {
+                            DFField::from(new_field)
+                        }
+                    })
+                    .collect();
+                DFSchema::new_with_metadata(new_fields, schema.metadata().clone())
+                    .unwrap()
+            } // Schema will be transformed for `AnyAll` as well
+        }
+    }
+
+    /// Transform Arrow field according to subquery type
+    pub fn transform_field(field: &Field, typ: SubqueryType) -> Field {
+        match typ {
+            SubqueryType::Scalar => field.clone(),
+            SubqueryType::Exists => Field::new(field.name(), DataType::Boolean, false),
+            // Field will be transformed for `AnyAll` as well
+        }
     }
 }
 
@@ -475,10 +536,20 @@ impl LogicalPlan {
             LogicalPlan::Values(Values { schema, .. }) => vec![schema],
             LogicalPlan::Window(Window { input, schema, .. })
             | LogicalPlan::Projection(Projection { input, schema, .. })
-            | LogicalPlan::Subquery(Subquery { input, schema, .. })
             | LogicalPlan::Aggregate(Aggregate { input, schema, .. })
             | LogicalPlan::TableUDFs(TableUDFs { input, schema, .. }) => {
                 let mut schemas = input.all_schemas();
+                schemas.insert(0, schema);
+                schemas
+            }
+            LogicalPlan::Subquery(Subquery {
+                input,
+                subqueries,
+                schema,
+                ..
+            }) => {
+                let mut schemas = input.all_schemas();
+                schemas.extend(subqueries.iter().map(|s| s.schema()));
                 schemas.insert(0, schema);
                 schemas
             }
@@ -1063,7 +1134,9 @@ impl LogicalPlan {
                         }
                         Ok(())
                     }
-                    LogicalPlan::Subquery(Subquery { .. }) => write!(f, "Subquery"),
+                    LogicalPlan::Subquery(Subquery { types, .. }) => {
+                        write!(f, "Subquery: types={:?}", types)
+                    }
                     LogicalPlan::Filter(Filter {
                         predicate: ref expr,
                         ..
