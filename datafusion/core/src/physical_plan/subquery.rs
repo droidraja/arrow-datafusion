@@ -39,7 +39,7 @@ use super::expressions::PhysicalSortExpr;
 use super::{RecordBatchStream, SendableRecordBatchStream, Statistics};
 use crate::execution::context::TaskContext;
 use async_trait::async_trait;
-use datafusion_common::OuterQueryCursor;
+use datafusion_common::{OuterQueryCursor, ScalarValue};
 use futures::stream::Stream;
 use futures::stream::StreamExt;
 
@@ -224,6 +224,21 @@ impl ExecutionPlan for SubqueryExec {
                                     _ => subquery_arrays[subquery_i]
                                         .push(Arc::new(BooleanArray::from(vec![true]))),
                                 },
+                                SubqueryType::AnyAll => {
+                                    let array_ref = subquery_batch.column(0);
+                                    // TODO: optimize?
+                                    let mut scalars = vec![];
+                                    for i in 0..array_ref.len() {
+                                        scalars.push(ScalarValue::try_from_array(
+                                            array_ref, i,
+                                        )?);
+                                    }
+                                    let list = ScalarValue::List(
+                                        Some(Box::new(scalars)),
+                                        Box::new(data_type.clone()),
+                                    );
+                                    subquery_arrays[subquery_i].push(list.to_array());
+                                }
                             };
                         } else {
                             match subquery_type {
@@ -232,6 +247,13 @@ impl ExecutionPlan for SubqueryExec {
                                 }
                                 SubqueryType::Exists => subquery_arrays[subquery_i]
                                     .push(Arc::new(BooleanArray::from(vec![false]))),
+                                SubqueryType::AnyAll => {
+                                    let list = ScalarValue::List(
+                                        Some(Box::new(vec![])),
+                                        Box::new(data_type.clone()),
+                                    );
+                                    subquery_arrays[subquery_i].push(list.to_array());
+                                }
                             };
                         }
                     }

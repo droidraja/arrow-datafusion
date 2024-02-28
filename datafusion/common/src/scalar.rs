@@ -468,6 +468,9 @@ macro_rules! build_values_list {
                     ScalarValue::$SCALAR_TY(None) => {
                         builder.values().append_null().unwrap();
                     }
+                    ScalarValue::Null => {
+                        builder.values().append_null().unwrap();
+                    }
                     _ => panic!("Incompatible ScalarValue for list"),
                 };
             }

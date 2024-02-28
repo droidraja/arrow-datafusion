@@ -284,7 +284,9 @@ pub enum SubqueryType {
     Scalar,
     /// EXISTS(...) evaluating to true if at least one row was produced
     Exists,
-    // This will be extended with `AnyAll` type.
+    /// ANY(...) / ALL(...)
+    AnyAll,
+    // [NOT] IN(...) is not defined as it is implicitly evaluated as ANY = (...) / ALL <> (...)   // This will be extended with `AnyAll` type.
 }
 
 impl Display for SubqueryType {
@@ -292,6 +294,7 @@ impl Display for SubqueryType {
         let subquery_type = match self {
             SubqueryType::Scalar => "Scalar",
             SubqueryType::Exists => "Exists",
+            Self::AnyAll => "AnyAll",
         };
         write!(f, "{}", subquery_type)
     }
@@ -318,7 +321,7 @@ impl Subquery {
     pub fn transform_dfschema(schema: &DFSchema, typ: SubqueryType) -> DFSchema {
         match typ {
             SubqueryType::Scalar => schema.clone(),
-            SubqueryType::Exists => {
+            SubqueryType::Exists | SubqueryType::AnyAll => {
                 let new_fields = schema
                     .fields()
                     .iter()
@@ -341,8 +344,19 @@ impl Subquery {
     pub fn transform_field(field: &Field, typ: SubqueryType) -> Field {
         match typ {
             SubqueryType::Scalar => field.clone(),
-            SubqueryType::Exists => Field::new(field.name(), DataType::Boolean, false),
-            // Field will be transformed for `AnyAll` as well
+            SubqueryType::Exists => Field::new(field.name(), DataType::Boolean, false), // Field will be transformed for `AnyAll` as well
+            // ANY/ALL subquery converts subquery result rows into a list
+            // and uses existing code evaluating ANY with a list to evaluate the result
+            SubqueryType::AnyAll => {
+                let item = Field::new_dict(
+                    "item",
+                    field.data_type().clone(),
+                    true,
+                    field.dict_id().unwrap_or(0),
+                    field.dict_is_ordered().unwrap_or(false),
+                );
+                Field::new(field.name(), DataType::List(Box::new(item)), false)
+            }
         }
     }
 }
