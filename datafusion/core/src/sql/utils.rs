@@ -603,7 +603,8 @@ pub(crate) fn resolve_positions_to_exprs(
                 let exprs = exprs
                     .iter()
                     .map(|e| {
-                        resolve_positions_to_exprs(e, select_exprs).unwrap_or(e.clone())
+                        resolve_positions_to_exprs(e, select_exprs)
+                            .unwrap_or_else(|| e.clone())
                     })
                     .collect::<Vec<_>>();
                 Some(Expr::GroupingSet(GroupingSet::Rollup(exprs)))
