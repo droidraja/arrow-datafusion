@@ -29,7 +29,6 @@ use datafusion_common::DataFusionError;
 pub use datafusion_common::{Column, ExprSchema};
 pub use datafusion_expr::expr_fn::*;
 use datafusion_expr::BuiltinScalarFunction;
-pub use datafusion_expr::Expr;
 pub use datafusion_expr::Like;
 use datafusion_expr::StateTypeFunction;
 pub use datafusion_expr::{lit, lit_timestamp_nano, Literal};
@@ -37,6 +36,7 @@ use datafusion_expr::{
     AccumulatorFunctionImplementation, TableFunctionImplementation, TableUDF,
 };
 use datafusion_expr::{AggregateUDF, ScalarUDF};
+pub use datafusion_expr::{Expr, GroupingSet};
 use datafusion_expr::{
     ReturnTypeFunction, ScalarFunctionImplementation, Signature, Volatility,
 };
@@ -277,9 +277,17 @@ pub fn exprlist_to_fields<'a>(
         }
         _ => {
             let input_schema = &plan.schema();
-            expr.into_iter().map(|e| e.to_field(input_schema)).collect()
+            exprlist_to_fields_from_schema(expr, input_schema)
         }
     }
+}
+
+/// Create field meta-data from an expression, for use in a result set schema
+pub fn exprlist_to_fields_from_schema<'a>(
+    expr: impl IntoIterator<Item = &'a Expr>,
+    input_schema: &DFSchema,
+) -> Result<Vec<DFField>> {
+    expr.into_iter().map(|e| e.to_field(input_schema)).collect()
 }
 
 /// Calls a named built in function

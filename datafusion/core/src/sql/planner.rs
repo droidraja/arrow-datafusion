@@ -52,12 +52,7 @@ use datafusion_expr::{window_function::WindowFunction, BuiltinScalarFunction};
 use hashbrown::HashMap;
 use log::warn;
 
-<<<<<<< HEAD
-=======
-use datafusion_common::field_not_found;
 use datafusion_expr::expr::GroupingSet;
-use datafusion_expr::logical_plan::{Filter, Subquery};
->>>>>>> 1fe038fbc (Add SQL planner support for `ROLLUP` and `CUBE` grouping set expressions (#2446))
 use sqlparser::ast::{
     ArrayAgg, BinaryOperator, DataType as SQLDataType, DateTimeField, Expr as SQLExpr,
     Fetch, FunctionArg, FunctionArgExpr, Ident, Join, JoinConstraint, JoinOperator,
@@ -1268,17 +1263,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
         group_by_exprs: Vec<Expr>,
         aggr_exprs: Vec<Expr>,
     ) -> Result<(LogicalPlan, Vec<Expr>, Option<Expr>)> {
-<<<<<<< HEAD
-        let aggr_projection_exprs = group_by_exprs
-            .iter()
-            .chain(aggr_exprs.iter())
-            .cloned()
-            .collect::<Vec<Expr>>();
-=======
         // create the aggregate plan
-        let plan = LogicalPlanBuilder::from(input.clone())
-            .aggregate(group_by_exprs.clone(), aggr_exprs.clone())?
-            .build()?;
 
         // in this next section of code we are re-writing the projection to refer to columns
         // output by the aggregate plan. For example, if the projection contains the expression
@@ -1305,7 +1290,6 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
             }
         }
         aggr_projection_exprs.extend_from_slice(&aggr_exprs);
->>>>>>> 1fe038fbc (Add SQL planner support for `ROLLUP` and `CUBE` grouping set expressions (#2446))
 
         let plan = LogicalPlanBuilder::from(input.clone())
             .aggregate(group_by_exprs, aggr_exprs)?
@@ -1787,6 +1771,48 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
         LogicalPlanBuilder::values(values)?.build()
     }
 
+    pub(super) fn sql_rollup_to_expr(
+        &self,
+        exprs: Vec<Vec<SQLExpr>>,
+        schema: &DFSchema,
+    ) -> Result<Expr> {
+        let args: Result<Vec<_>> = exprs
+            .into_iter()
+            .map(|v| {
+                if v.len() != 1 {
+                    Err(DataFusionError::NotImplemented(
+                        "Tuple expressions are not supported for Rollup expressions"
+                            .to_string(),
+                    ))
+                } else {
+                    self.sql_expr_to_logical_expr(v[0].clone(), schema)
+                }
+            })
+            .collect();
+        Ok(Expr::GroupingSet(GroupingSet::Rollup(args?)))
+    }
+
+    pub(super) fn sql_cube_to_expr(
+        &self,
+        exprs: Vec<Vec<SQLExpr>>,
+        schema: &DFSchema,
+    ) -> Result<Expr> {
+        let args: Result<Vec<_>> = exprs
+            .into_iter()
+            .map(|v| {
+                if v.len() != 1 {
+                    Err(DataFusionError::NotImplemented(
+                        "Tuple expressions are not supported for Cube expressions"
+                            .to_string(),
+                    ))
+                } else {
+                    self.sql_expr_to_logical_expr(v[0].clone(), schema)
+                }
+            })
+            .collect();
+        Ok(Expr::GroupingSet(GroupingSet::Cube(args?)))
+    }
+
     fn sql_expr_to_logical_expr(&self, sql: SQLExpr, schema: &DFSchema) -> Result<Expr> {
         match sql {
             SQLExpr::Value(Value::Number(n, _)) => parse_sql_number(&n),
@@ -2245,6 +2271,12 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                     None => vec![arg],
                 };
                 Ok(Expr::ScalarFunction { fun, args })
+            }
+            SQLExpr::Rollup(exprs) => {
+                self.sql_rollup_to_expr(exprs, schema)
+            }
+            SQLExpr::Cube(exprs) => {
+                self.sql_cube_to_expr(exprs, schema)
             }
 
             SQLExpr::Function(mut function) => {
@@ -3358,7 +3390,7 @@ mod tests {
                    HAVING first_name = 'M'";
         let err = logical_plan(sql).expect_err("query should have failed");
         assert_eq!(
-            "Plan(\"Having references column(s) not provided by the select\")",
+            "Plan(\"Expression #person.first_name could not be resolved from available columns: #person.id, #person.age\")",
             format!("{:?}", err)
         );
     }
@@ -3370,7 +3402,7 @@ mod tests {
                    HAVING age > 100";
         let err = logical_plan(sql).expect_err("query should have failed");
         assert_eq!(
-            "Plan(\"Having references column(s) not provided by the select\")",
+            "Plan(\"Expression #person.age could not be resolved from available columns: #person.id, #person.age + Int64(1)\")",
             format!("{:?}", err)
         );
     }
@@ -3382,7 +3414,7 @@ mod tests {
                    HAVING MAX(age) > 100";
         let err = logical_plan(sql).expect_err("query should have failed");
         assert_eq!(
-            "Plan(\"Projection references non-aggregate values\")",
+            "Plan(\"Expression #person.first_name could not be resolved from available columns: #MAX(person.age)\")",
             format!("{:?}", err)
         );
     }
@@ -3418,7 +3450,7 @@ mod tests {
                    HAVING first_name = 'M'";
         let err = logical_plan(sql).expect_err("query should have failed");
         assert_eq!(
-            "Plan(\"Having references non-aggregate values\")",
+            "Plan(\"Expression #person.first_name could not be resolved from available columns: #COUNT(UInt8(1))\")",
             format!("{:?}", err)
         );
     }
@@ -3540,7 +3572,7 @@ mod tests {
                    HAVING MAX(age) > 10 AND last_name = 'M'";
         let err = logical_plan(sql).expect_err("query should have failed");
         assert_eq!(
-            "Plan(\"Having references non-aggregate values\")",
+            "Plan(\"Expression #person.last_name could not be resolved from available columns: #person.first_name, #MAX(person.age)\")",
             format!("{:?}", err)
         );
     }
@@ -3865,14 +3897,14 @@ mod tests {
         let sql = "SELECT state, MIN(age) FROM person GROUP BY 0";
         let err = logical_plan(sql).expect_err("query should have failed");
         assert_eq!(
-            "Plan(\"Projection references non-aggregate values\")",
+            "Plan(\"Expression #person.state could not be resolved from available columns: #Int64(0), #MIN(person.age)\")",
             format!("{:?}", err)
         );
 
         let sql2 = "SELECT state, MIN(age) FROM person GROUP BY 5";
         let err2 = logical_plan(sql2).expect_err("query should have failed");
         assert_eq!(
-            "Plan(\"Projection references non-aggregate values\")",
+            "Plan(\"Expression #person.state could not be resolved from available columns: #Int64(5), #MIN(person.age)\")",
             format!("{:?}", err2)
         );
     }
@@ -3953,7 +3985,7 @@ mod tests {
             "SELECT ((age + 1) / 2) * (age + 9), MIN(first_name) FROM person GROUP BY age + 1";
         let err = logical_plan(sql).expect_err("query should have failed");
         assert_eq!(
-            r#"Plan("Projection references non-aggregate values")"#,
+            r#"Plan("Expression #person.age could not be resolved from available columns: #person.age + Int64(1), #MIN(person.first_name)")"#,
             format!("{:?}", err)
         );
     }
@@ -3964,7 +3996,7 @@ mod tests {
         let sql = "SELECT age, MIN(first_name) FROM person GROUP BY age + 1";
         let err = logical_plan(sql).expect_err("query should have failed");
         assert_eq!(
-            r#"Plan("Projection references non-aggregate values")"#,
+            r#"Plan("Expression #person.age could not be resolved from available columns: #person.age + Int64(1), #MIN(person.first_name)")"#,
             format!("{:?}", err)
         );
     }
@@ -4219,7 +4251,7 @@ mod tests {
         let sql = "SELECT c1, c13, MIN(c12) FROM aggregate_test_100 GROUP BY c1";
         let err = logical_plan(sql).expect_err("query should have failed");
         assert_eq!(
-            "Plan(\"Projection references non-aggregate values\")",
+            "Plan(\"Expression #aggregate_test_100.c13 could not be resolved from available columns: #aggregate_test_100.c1, #MIN(aggregate_test_100.c12)\")",
             format!("{:?}", err)
         );
     }
@@ -5280,7 +5312,6 @@ mod tests {
         quick_test(sql, expected);
     }
 
-<<<<<<< HEAD
     #[test]
     fn test_offset_after_limit() {
         let sql = "select id from person where person.id > 100 LIMIT 5 OFFSET 3;";
@@ -5339,7 +5370,7 @@ mod tests {
         \n          Filter: #person.id < Int64(100)\
         \n            TableScan: person projection=None";
         quick_test(sql, expected);
-=======
+    }
     #[tokio::test]
     async fn aggregate_with_rollup() {
         let sql = "SELECT id, state, age, COUNT(*) FROM person GROUP BY id, ROLLUP (state, age)";
@@ -5365,19 +5396,5 @@ mod tests {
         let sql = "SELECT id, state, age, COUNT(*) FROM person GROUP BY id, GROUPING SETS ((state), (state, age), (id, state))";
         let expected = "TBD";
         quick_test(sql, expected);
-    }
-
-    fn assert_field_not_found(err: DataFusionError, name: &str) {
-        match err {
-            DataFusionError::SchemaError { .. } => {
-                let msg = format!("{}", err);
-                let expected = format!("Schema error: No field named '{}'.", name);
-                if !msg.starts_with(&expected) {
-                    panic!("error [{}] did not start with [{}]", msg, expected);
-                }
-            }
-            _ => panic!("assert_field_not_found wrong error type"),
-        }
->>>>>>> 1fe038fbc (Add SQL planner support for `ROLLUP` and `CUBE` grouping set expressions (#2446))
     }
 }

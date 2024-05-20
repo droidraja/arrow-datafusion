@@ -216,45 +216,38 @@ pub(crate) fn can_columns_satisfy_exprs(
             "Expr::Column are required".to_string(),
         )),
     })?;
-<<<<<<< HEAD
-
-    Ok(find_column_exprs(exprs).iter().all(|c| columns.contains(c)))
-=======
     let column_exprs = find_column_exprs(exprs);
     for e in &column_exprs {
         match e {
             Expr::GroupingSet(GroupingSet::Rollup(exprs)) => {
                 for e in exprs {
-                    check_column_satisfies_expr(columns, e, message_prefix)?;
+                    check_column_satisfies_expr(columns, e)?;
                 }
             }
             Expr::GroupingSet(GroupingSet::Cube(exprs)) => {
                 for e in exprs {
-                    check_column_satisfies_expr(columns, e, message_prefix)?;
+                    check_column_satisfies_expr(columns, e)?;
                 }
             }
             Expr::GroupingSet(GroupingSet::GroupingSets(lists_of_exprs)) => {
                 for exprs in lists_of_exprs {
                     for e in exprs {
-                        check_column_satisfies_expr(columns, e, message_prefix)?;
+                        check_column_satisfies_expr(columns, e)?;
                     }
                 }
             }
-            _ => check_column_satisfies_expr(columns, e, message_prefix)?,
+            _ => {
+                check_column_satisfies_expr(columns, e)?;
+            }
         }
     }
-    Ok(())
+    Ok(true)
 }
 
-fn check_column_satisfies_expr(
-    columns: &[Expr],
-    expr: &Expr,
-    message_prefix: &str,
-) -> Result<()> {
+fn check_column_satisfies_expr(columns: &[Expr], expr: &Expr) -> Result<()> {
     if !columns.contains(expr) {
         return Err(DataFusionError::Plan(format!(
-            "{}: Expression {:?} could not be resolved from available columns: {}",
-            message_prefix,
+            "Expression {:?} could not be resolved from available columns: {}",
             expr,
             columns
                 .iter()
@@ -264,7 +257,6 @@ fn check_column_satisfies_expr(
         )));
     }
     Ok(())
->>>>>>> 1fe038fbc (Add SQL planner support for `ROLLUP` and `CUBE` grouping set expressions (#2446))
 }
 
 /// Returns a cloned `Expr`, but any of the `Expr`'s in the tree may be
@@ -606,6 +598,27 @@ pub(crate) fn resolve_positions_to_exprs(
                 _ => select_expr.clone(),
             })
         }
+        Expr::GroupingSet(grouping_set) => match grouping_set {
+            GroupingSet::Rollup(exprs) => {
+                let exprs = exprs
+                    .iter()
+                    .map(|e| {
+                        resolve_positions_to_exprs(e, select_exprs).unwrap_or(e.clone())
+                    })
+                    .collect::<Vec<_>>();
+                Some(Expr::GroupingSet(GroupingSet::Rollup(exprs)))
+            }
+            GroupingSet::Cube(exprs) => {
+                let exprs = exprs
+                    .iter()
+                    .map(|e| {
+                        resolve_positions_to_exprs(e, select_exprs).unwrap_or(e.clone())
+                    })
+                    .collect::<Vec<_>>();
+                Some(Expr::GroupingSet(GroupingSet::Cube(exprs)))
+            }
+            GroupingSet::GroupingSets(_) => unimplemented!(),
+        },
         _ => None,
     }
 }

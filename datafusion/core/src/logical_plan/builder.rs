@@ -1264,7 +1264,7 @@ pub fn build_table_udf_schema(
     let input_schema = input.schema();
     let mut schema = (**input_schema).clone();
     schema.merge(&DFSchema::new_with_metadata(
-        exprlist_to_fields(udtf_expr, input_schema)?,
+        exprlist_to_fields(udtf_expr, input)?,
         HashMap::new(),
     )?);
     Ok(Arc::new(schema))

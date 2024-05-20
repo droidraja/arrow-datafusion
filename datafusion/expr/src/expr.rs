@@ -276,7 +276,7 @@ pub enum Expr {
 /// for Postgres definition.
 /// See https://spark.apache.org/docs/latest/sql-ref-syntax-qry-select-groupby.html
 /// for Apache Spark definition.
-#[derive(Clone, PartialEq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum GroupingSet {
     /// Rollup grouping sets
     Rollup(Vec<Expr>),

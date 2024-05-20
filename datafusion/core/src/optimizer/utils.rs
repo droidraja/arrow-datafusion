@@ -36,7 +36,6 @@ use crate::{
     error::{DataFusionError, Result},
     logical_plan::ExpressionVisitor,
 };
-use datafusion_common::DFSchema;
 use datafusion_expr::expr::GroupingSet;
 use std::{collections::HashSet, sync::Arc};
 
