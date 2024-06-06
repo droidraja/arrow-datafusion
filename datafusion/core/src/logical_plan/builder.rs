@@ -28,6 +28,7 @@ use crate::logical_plan::plan::{
     Aggregate, Analyze, EmptyRelation, Explain, Filter, Join, Projection, Sort, Subquery,
     TableScan, TableUDFs, ToStringifiedPlan, Union, Window,
 };
+use crate::logical_plan::GroupingSet;
 use crate::optimizer::utils;
 use crate::prelude::*;
 use crate::scalar::ScalarValue;
@@ -899,7 +900,8 @@ impl LogicalPlanBuilder {
                 }
             });
         let aggr_expr = normalize_cols(aggr_exprs, &self.plan)?;
-        let all_expr = group_expr.iter().chain(aggr_expr.iter());
+        let all_grouping_exprs = self.extract_exprlist_from_groupping_set(&group_expr);
+        let all_expr = all_grouping_exprs.iter().chain(aggr_expr.iter());
         validate_unique_names("Aggregations", all_expr.clone(), self.plan.schema())?;
         let aggr_schema = DFSchema::new_with_metadata(
             exprlist_to_fields(all_expr, &self.plan)?,
@@ -911,6 +913,23 @@ impl LogicalPlanBuilder {
             aggr_expr,
             schema: DFSchemaRef::new(aggr_schema),
         })))
+    }
+
+    fn extract_exprlist_from_groupping_set(&self, exprs: &Vec<Expr>) -> Vec<Expr> {
+        let mut result = Vec::new();
+        for expr in exprs {
+            match expr {
+                Expr::GroupingSet(groupping_set) => match groupping_set {
+                    GroupingSet::Rollup(exprs) => result.extend(exprs.iter().cloned()),
+                    GroupingSet::Cube(exprs) => result.extend(exprs.iter().cloned()),
+                    GroupingSet::GroupingSets(sets) => {
+                        result.extend(sets.iter().flat_map(|s| s.iter().cloned()))
+                    }
+                },
+                _ => result.push(expr.clone()),
+            }
+        }
+        result
     }
 
     /// Create an expression to represent the explanation of the plan
