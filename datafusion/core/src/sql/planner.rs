@@ -1850,7 +1850,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                 leading_precision,
                 last_field,
                 fractional_seconds_precision,
-            }) => match *value {
+            }) => (#[cfg_attr(not(debug_assertions), inline(always))] || match *value {
                 SQLExpr::Value(Value::Number(value, _)) => {
                     self.sql_interval_to_literal(
                         value,
@@ -1891,14 +1891,14 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                         args: vec![self.sql_expr_to_logical_expr(expr, schema)?, Expr::Literal(ScalarValue::Utf8(Some(unit.to_lowercase())))]
                     })
                 }
-            },
+            })(),
 
             // @todo Support
             SQLExpr::Collate { expr, .. } => self.sql_expr_to_logical_expr(*expr, schema),
 
             SQLExpr::Array(arr) => self.sql_array_literal(arr.elem, schema),
 
-            SQLExpr::Identifier(id) => {
+            SQLExpr::Identifier(id) => (#[cfg_attr(not(debug_assertions), inline(always))] || {
                 if id.value.starts_with('@') {
                     // TODO: figure out if ScalarVariables should be insensitive.
                     let var_names = vec![id.value];
@@ -1934,7 +1934,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                         name: id.value,
                     }))
                 }
-            }
+            })(),
 
             SQLExpr::ArrayIndex { obj, indexs } => {
                 let expr = self.sql_expr_to_logical_expr(*obj, schema)?;
@@ -1944,7 +1944,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                     .collect::<Result<Vec<_>>>()?)
             }
 
-            SQLExpr::CompoundIdentifier(ids) => {
+            SQLExpr::CompoundIdentifier(ids) => (#[cfg_attr(not(debug_assertions), inline(always))] || {
                 let mut var_names: Vec<_> = ids.into_iter().map(normalize_ident).collect();
 
                 if &var_names[0][0..1] == "@" {
@@ -2023,14 +2023,14 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                         ))),
                     }
                 }
-            }
+            })(),
 
             SQLExpr::Case {
                 operand,
                 conditions,
                 results,
                 else_result,
-            } => {
+            } => (#[cfg_attr(not(debug_assertions), inline(always))] || {
                 let expr = if let Some(e) = operand {
                     Some(Box::new(self.sql_expr_to_logical_expr(*e, schema)?))
                 } else {
@@ -2059,7 +2059,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                         .collect(),
                     else_expr,
                 })
-            }
+            })(),
 
             SQLExpr::Cast {
                 expr,
@@ -2197,7 +2197,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                 expr,
                 substring_from,
                 substring_for,
-            } => {
+            } => (#[cfg_attr(not(debug_assertions), inline(always))] || {
                 let args = match (substring_from, substring_for) {
                     (Some(from_expr), Some(for_expr)) => {
                         let arg = self.sql_expr_to_logical_expr(*expr, schema)?;
@@ -2238,7 +2238,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                     fun: BuiltinScalarFunction::Substr,
                     args,
                 })
-            }
+            })(),
 
             #[cfg(not(feature = "unicode_expressions"))]
             SQLExpr::Substring {
@@ -2279,7 +2279,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                 self.sql_cube_to_expr(exprs, schema)
             }
 
-            SQLExpr::Function(mut function) => {
+            SQLExpr::Function(mut function) => (#[cfg_attr(not(debug_assertions), inline(always))] || {
                 let name = if function.name.0.len() > 1 {
                     // DF doesn't handle compound identifiers
                     // (e.g. "foo.bar") for function names yet
@@ -2402,7 +2402,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                         },
                     },
                 }
-            }
+            })(),
 
             SQLExpr::Nested(e) => self.sql_expr_to_logical_expr(*e, schema),
 
