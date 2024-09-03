@@ -2405,10 +2405,11 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
 
             SQLExpr::Subquery(q) => self.subquery_to_plan(q, SubqueryType::Scalar, schema),
 
-            SQLExpr::DotExpr { expr, field } => {
+            SQLExpr::CompositeAccess { expr, key } => {
                 Ok(Expr::GetIndexedField {
                     expr: Box::new(self.sql_expr_to_logical_expr(*expr, schema)?),
-                    key: Box::new(Expr::Literal(ScalarValue::Utf8(Some(field.value)))),
+                    // TODO this is incomplete
+                    key: Box::new(Expr::Literal(ScalarValue::Utf8(Some(key.value)))),
                 })
             },
             SQLExpr::AnyAllSubquery(q) => self.subquery_to_plan(q, SubqueryType::AnyAll, schema),
