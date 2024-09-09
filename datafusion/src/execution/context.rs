@@ -27,6 +27,7 @@ use crate::{
         hash_build_probe_order::HashBuildProbeOrder,
     },
     physical_optimizer::optimizer::PhysicalOptimizerRule,
+    physical_plan::parquet::{BasicMetadataCacheFactory, MetadataCacheFactory},
 };
 use log::debug;
 use std::fs;
@@ -290,6 +291,7 @@ impl ExecutionContext {
             self.state.clone(),
             &LogicalPlanBuilder::scan_parquet(
                 filename,
+                self.state.lock().unwrap().metadata_cache_factory().clone(),
                 None,
                 self.state.lock().unwrap().config.concurrency,
             )?
@@ -325,8 +327,12 @@ impl ExecutionContext {
     pub fn register_parquet(&mut self, name: &str, filename: &str) -> Result<()> {
         let table = {
             let m = self.state.lock().unwrap();
-            ParquetTable::try_new(filename, m.config.concurrency)?
-                .with_enable_pruning(m.config.parquet_pruning)
+            ParquetTable::try_new(
+                filename,
+                m.metadata_cache_factory().clone(),
+                m.config.concurrency,
+            )?
+            .with_enable_pruning(m.config.parquet_pruning)
         };
         self.register_table(name, Arc::new(table))?;
         Ok(())
@@ -655,6 +661,8 @@ pub struct ExecutionConfig {
     pub physical_optimizers: Vec<Arc<dyn PhysicalOptimizerRule + Send + Sync>>,
     /// Responsible for planning `LogicalPlan`s, and `ExecutionPlan`
     query_planner: Arc<dyn QueryPlanner + Send + Sync>,
+    /// Responsible for constructing ParquetMetadataCaches.
+    pub metadata_cache_factory: Arc<dyn MetadataCacheFactory>,
     /// Default catalog name for table resolution
     default_catalog: String,
     /// Default schema name for table resolution
@@ -700,6 +708,7 @@ impl Default for ExecutionConfig {
                 Arc::new(AddCoalescePartitionsExec::new()),
             ],
             query_planner: Arc::new(DefaultQueryPlanner {}),
+            metadata_cache_factory: Arc::new(BasicMetadataCacheFactory::new()),
             default_catalog: "datafusion".to_owned(),
             default_schema: "public".to_owned(),
             create_default_catalog_and_schema: true,
@@ -740,6 +749,15 @@ impl ExecutionConfig {
         query_planner: Arc<dyn QueryPlanner + Send + Sync>,
     ) -> Self {
         self.query_planner = query_planner;
+        self
+    }
+
+    /// Replace the default metadata cache factory
+    pub fn with_metadata_cache_factory(
+        mut self,
+        metadata_cache_factory: Arc<dyn MetadataCacheFactory>,
+    ) -> Self {
+        self.metadata_cache_factory = metadata_cache_factory;
         self
     }
 
@@ -902,6 +920,11 @@ impl ExecutionContextState {
                     resolved_ref.schema
                 ))
             })
+    }
+
+    /// Returns the MetadataCacheFactory
+    pub fn metadata_cache_factory(&self) -> &Arc<dyn MetadataCacheFactory> {
+        &self.config.metadata_cache_factory
     }
 }
 
