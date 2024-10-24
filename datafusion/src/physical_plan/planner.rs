@@ -1746,6 +1746,131 @@ fn input_sorted_by_group_key(
     true
 }
 
+#[derive(Debug, Clone)]
+/// Return value of input_sortedness_by_group_key.  If succeeded, every group key offset appears in
+/// sort_order or unsorted exactly once.
+pub struct SortednessByGroupKey {
+    /// Elems are (offset into the sort key, offset into the group key), with sort key offsets
+    /// strictly increasing.  Each Vec<(usize, usize)> is a clump of adjacent columns, with
+    /// adjacency considered after ignoring single value columns.
+    ///
+    /// Each column clump sees the input ordering in sawtoothing runs of rows, sawtoothing with different
+    /// granularity.
+    pub sort_order: Vec<Vec<(usize, usize)>>,
+    /// Indexes into the group key.
+    pub unsorted: Vec<usize>,
+    /// true if the first clump of sort_order is detached from the prefix of the sort key (ignoring
+    /// single value columns).  Used by is_sorted_by_group_key().
+    pub detached_from_prefix: bool,
+    /// If false, back out and use hash aggregation.  Might fail early to avoid pointlessly calculating.
+    pub succeeded: bool,
+}
+
+impl SortednessByGroupKey {
+    /// Constructs the succeeded == false case.
+    pub fn failed() -> Self {
+        Self {
+            sort_order: Vec::new(),
+            unsorted: Vec::new(),
+            detached_from_prefix: false,
+            succeeded: false,
+        }
+    }
+    /// Returns true if the input is sorted by group key.
+    pub fn is_sorted_by_group_key(&self) -> bool {
+        self.sawtooth_levels() == Some(0)
+    }
+
+    /// Returns the number of "sawtooth levels" the group key may experience, with 0 being perfectly
+    /// sorted, 1 meaning the group key is missing one clump of index columns, etc.  Returns None if
+    /// there are any unsorted group keys or the analysis simply failed.
+    pub fn sawtooth_levels(&self) -> Option<usize> {
+        if self.succeeded && self.unsorted.is_empty() {
+            Some((self.sort_order.len() - 1) + (self.detached_from_prefix as usize))
+        } else {
+            None
+        }
+    }
+}
+
+/// Checks the degree to which input is sortable by a group key.  If it succeeds, returns clumps of
+/// effectively adjacent sort key columns.  For example, if the input's sort key is (A, B, S, C, D,
+/// E, F, G, H, I, J), and S is a single value column, and the group keys are for Column values C,
+/// E, F, I, B, and K, then this function will return {sort_order: [[(1, B), (3, C)], [(5, E), (6,
+/// F)], [(9, I)]], unsorted: [K], succeeded: true}.
+pub fn input_sortedness_by_group_key(
+    input: &dyn ExecutionPlan,
+    group_key: &[(Arc<dyn PhysicalExpr>, String)],
+) -> SortednessByGroupKey {
+    assert!(!group_key.is_empty());
+
+    let hints = input.output_hints();
+    // We check the group key is a prefix of the sort key.
+    let sort_key = hints.sort_order;
+    if sort_key.is_none() {
+        // I guess we're using hash aggregation.
+        return SortednessByGroupKey::failed();
+    }
+    let sort_key = sort_key.unwrap();
+    // Tracks which elements of sort key are used in the group key or have a single value.
+    let mut sort_key_hit = vec![false; sort_key.len()];
+    let mut sort_to_group = vec![usize::MAX; sort_key.len()];
+    let mut unsorted_group_keys = Vec::<usize>::with_capacity(group_key.len());
+    for (group_i, (g, _)) in group_key.iter().enumerate() {
+        let col = g.as_any().downcast_ref::<Column>();
+        if col.is_none() {
+            return SortednessByGroupKey::failed();
+        }
+        let input_col = input.schema().index_of(col.unwrap().name());
+        if input_col.is_err() {
+            return SortednessByGroupKey::failed();
+        }
+        let input_col = input_col.unwrap();
+        match sort_key.iter().find_position(|i| **i == input_col) {
+            None => {
+                unsorted_group_keys.push(group_i);
+            }
+            Some((sort_key_pos, _)) => {
+                sort_key_hit[sort_key_pos] = true;
+                if sort_to_group[sort_key_pos] != usize::MAX {
+                    return SortednessByGroupKey::failed(); // Bail out to simplify code a bit. This should not happen in practice.
+                }
+                sort_to_group[sort_key_pos] = group_i;
+            }
+        };
+    }
+
+    let mut clumps = Vec::<Vec<(usize, usize)>>::new();
+    // At this point we walk through the sort_key_hit vec.
+    let mut clump = Vec::<(usize, usize)>::new();
+    // Are our clumps detached from the sort prefix?
+    let mut detached_from_prefix = false;
+    for (i, &hit) in sort_key_hit.iter().enumerate() {
+        if hit {
+            clump.push((i, sort_to_group[i]));
+        } else if hints.single_value_columns.contains(&sort_key[i]) {
+            // Don't end the clump.
+        } else {
+            if clump.is_empty() {
+                detached_from_prefix |= clumps.is_empty();
+            } else {
+                clumps.push(clump);
+                clump = Vec::new();
+            }
+        }
+    }
+    if !clump.is_empty() {
+        clumps.push(clump);
+    }
+
+    SortednessByGroupKey {
+        sort_order: clumps,
+        unsorted: unsorted_group_keys,
+        detached_from_prefix,
+        succeeded: true,
+    }
+}
+
 fn tuple_err<T, R>(value: (Result<T>, Result<R>)) -> Result<(T, R)> {
     match value {
         (Ok(e), Ok(e1)) => Ok((e, e1)),
@@ -2104,6 +2229,17 @@ mod tests {
         );
         assert!(is_sorted);
         assert_eq!(sort_order, vec![0, 1, 2, 3, 4]);
+
+        let sortedness =
+            input_sortedness_by_group_key(execution_plan.as_ref(), &physical_group_key);
+        assert!(sortedness.succeeded);
+        assert_eq!(
+            sortedness.sort_order,
+            vec![vec![(0, 0), (1, 1), (2, 2), (3, 3), (4, 4)]]
+        );
+        assert_eq!(sortedness.unsorted, vec![] as Vec<usize>);
+        assert_eq!(sortedness.detached_from_prefix, false);
+        assert!(sortedness.is_sorted_by_group_key());
 
         Ok(())
     }
