@@ -506,10 +506,26 @@ impl DefaultPhysicalPlanner {
                     })
                     .collect::<Result<Vec<_>>>()?;
 
-                //It's not obvious here, but "order" here is mapping from input "sort_on" into
-                //positions of "group by" columns
-                let (strategy, order) =
-                    compute_aggregation_strategy(input_exec.as_ref(), &groups);
+                //It's not obvious here, but "order" here is mapping from input "sort_on"(*) into
+                //positions of "group by" columns.  (*) but with some flexibility if it has
+                //single-value columns
+                let input_sortedness =
+                    input_sortedness_by_group_key(input_exec.as_ref(), &groups);
+                let (strategy, order): (AggregateStrategy, Option<Vec<usize>>) =
+                    match input_sortedness.sawtooth_levels() {
+                        Some(0) => {
+                            let order = input_sortedness.sort_order[0]
+                                .iter()
+                                .map(|(_sort_key_offset, group_key_offset)| {
+                                    *group_key_offset
+                                })
+                                .collect_vec();
+                            (AggregateStrategy::InplaceSorted, Some(order))
+                        }
+                        Some(_) => (AggregateStrategy::Hash, None),
+                        _ => (AggregateStrategy::Hash, None),
+                    };
+
                 // TODO: fix cubestore planning and re-enable.
                 if false && input_exec.output_partitioning().partition_count() == 1 {
                     // A single pass is enough for 1 partition.
@@ -1663,21 +1679,7 @@ pub fn evaluate_const(expr: Arc<dyn PhysicalExpr>) -> Result<Arc<dyn PhysicalExp
     Ok(Arc::new(Literal::new(scalar)))
 }
 
-/// Returns the most efficient aggregation strategy for the given input.
-pub fn compute_aggregation_strategy(
-    input: &dyn ExecutionPlan,
-    group_key: &[(Arc<dyn PhysicalExpr>, String)],
-) -> (AggregateStrategy, /*sort_order*/ Option<Vec<usize>>) {
-    let mut sort_order = Vec::new();
-    if !group_key.is_empty()
-        && input_sorted_by_group_key(input, &group_key, &mut sort_order)
-    {
-        (AggregateStrategy::InplaceSorted, Some(sort_order))
-    } else {
-        (AggregateStrategy::Hash, None)
-    }
-}
-
+// TODO: Remove
 fn input_sorted_by_group_key(
     input: &dyn ExecutionPlan,
     group_key: &[(Arc<dyn PhysicalExpr>, String)],
@@ -1753,7 +1755,10 @@ pub fn input_sortedness_by_group_key(
     input: &dyn ExecutionPlan,
     group_key: &[(Arc<dyn PhysicalExpr>, String)],
 ) -> SortednessByGroupKey {
-    assert!(!group_key.is_empty());
+    if group_key.is_empty() {
+        // The caller has to deal with it (and in fact it wants to).
+        return SortednessByGroupKey::failed();
+    }
 
     let hints = input.output_hints();
     // We check the group key is a prefix of the sort key.
