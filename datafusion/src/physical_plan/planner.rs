@@ -1683,67 +1683,18 @@ fn input_sorted_by_group_key(
     group_key: &[(Arc<dyn PhysicalExpr>, String)],
     sort_order: &mut Vec<usize>,
 ) -> bool {
-    assert!(!group_key.is_empty());
+    let sortedness = input_sortedness_by_group_key(input, group_key);
     sort_order.clear();
-
-    let hints = input.output_hints();
-    // We check the group key is a prefix of the sort key.
-    let sort_key = hints.sort_order;
-    if sort_key.is_none() {
-        return false;
+    if sortedness.is_sorted_by_group_key() {
+        sort_order.extend(
+            sortedness.sort_order[0]
+                .iter()
+                .map(|&(_sort_key, group_key)| group_key),
+        );
+        true
+    } else {
+        false
     }
-    let sort_key = sort_key.unwrap();
-    // Tracks which elements of sort key are used in the group key or have a single value.
-    let mut sort_key_hit = vec![false; sort_key.len()];
-    let mut sort_to_group = vec![usize::MAX; sort_key.len()];
-    for (group_i, (g, _)) in group_key.iter().enumerate() {
-        let col = g.as_any().downcast_ref::<Column>();
-        if col.is_none() {
-            return false;
-        }
-        let input_col = input.schema().index_of(col.unwrap().name());
-        if input_col.is_err() {
-            return false;
-        }
-        let input_col = input_col.unwrap();
-        let sort_key_pos = match sort_key.iter().find_position(|i| **i == input_col) {
-            None => return false,
-            Some((p, _)) => p,
-        };
-        sort_key_hit[sort_key_pos] = true;
-        if sort_to_group[sort_key_pos] != usize::MAX {
-            return false; // Bail out to simplify code a bit. This should not happen in practice.
-        }
-        sort_to_group[sort_key_pos] = group_i;
-    }
-
-    // At this point all elements of the group key mapped into some column of the sort key. This
-    // checks the group key is mapped into a prefix of the sort key, except that it's okay if it
-    // skips over single value columns.
-    let mut pref_len: usize = 0;
-    for (i, hit) in sort_key_hit.iter().enumerate() {
-        if !hit && !hints.single_value_columns.contains(&sort_key[i]) {
-            break;
-        }
-        pref_len += 1;
-    }
-
-    if sort_key_hit[pref_len..].iter().any(|present| *present) {
-        // The group key did not hit a contiguous prefix of the sort key (ignoring single value
-        // columns); return false.
-        return false;
-    }
-
-    assert!(sort_order.is_empty()); // Cleared at the beginning of the function.
-
-    // Note that single-value columns might not have a mapping to the grouping key.
-    sort_order.extend(
-        sort_to_group
-            .iter()
-            .take(pref_len)
-            .filter(|i| **i != usize::MAX),
-    );
-    true
 }
 
 #[derive(Debug, Clone)]
