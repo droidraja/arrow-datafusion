@@ -1679,26 +1679,6 @@ pub fn evaluate_const(expr: Arc<dyn PhysicalExpr>) -> Result<Arc<dyn PhysicalExp
     Ok(Arc::new(Literal::new(scalar)))
 }
 
-// TODO: Remove
-fn input_sorted_by_group_key(
-    input: &dyn ExecutionPlan,
-    group_key: &[(Arc<dyn PhysicalExpr>, String)],
-    sort_order: &mut Vec<usize>,
-) -> bool {
-    let sortedness = input_sortedness_by_group_key(input, group_key);
-    sort_order.clear();
-    if sortedness.is_sorted_by_group_key() {
-        sort_order.extend(
-            sortedness.sort_order[0]
-                .iter()
-                .map(|&(_sort_key, group_key)| group_key),
-        );
-        true
-    } else {
-        false
-    }
-}
-
 #[derive(Debug, Clone)]
 /// Return value of input_sortedness_by_group_key.  If succeeded, every group key offset appears in
 /// sort_order or unsorted exactly once.
@@ -2176,15 +2156,6 @@ mod tests {
             )?;
             physical_group_key.push((phys_expr, "".to_owned()));
         }
-
-        let mut sort_order = Vec::<usize>::new();
-        let is_sorted: bool = input_sorted_by_group_key(
-            execution_plan.as_ref(),
-            &physical_group_key,
-            &mut sort_order,
-        );
-        assert!(is_sorted);
-        assert_eq!(sort_order, vec![0, 1, 2, 3, 4]);
 
         let sortedness =
             input_sortedness_by_group_key(execution_plan.as_ref(), &physical_group_key);
