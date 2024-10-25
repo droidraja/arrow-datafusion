@@ -506,6 +506,8 @@ impl DefaultPhysicalPlanner {
                     })
                     .collect::<Result<Vec<_>>>()?;
 
+                log::error!("DefaultPhysicalPlanner computing AggregateStrategy");
+
                 //It's not obvious here, but "order" here is mapping from input "sort_on"(*) into
                 //positions of "group by" columns.  (*) but with some flexibility if it has
                 //single-value columns
@@ -514,6 +516,7 @@ impl DefaultPhysicalPlanner {
                 let (strategy, order): (AggregateStrategy, Option<Vec<usize>>) =
                     match input_sortedness.sawtooth_levels() {
                         Some(0) => {
+                            log::error!("DefaultPhysicalExpr: Perfect match for inplace aggregation");
                             let order = input_sortedness.sort_order[0]
                                 .iter()
                                 .map(|(_sort_key_offset, group_key_offset)| {
@@ -522,8 +525,14 @@ impl DefaultPhysicalPlanner {
                                 .collect_vec();
                             (AggregateStrategy::InplaceSorted, Some(order))
                         }
-                        Some(_) => (AggregateStrategy::Hash, None),
-                        _ => (AggregateStrategy::Hash, None),
+                        Some(n) => {
+                            log::error!("DefaultPhysicalExpr: Non-perfect match for inplace aggregation: {} clumps", n);
+                            (AggregateStrategy::Hash, None)
+                        },
+                        _ => {
+                            log::error!("DefaultPhysicalExpr: No match for inplace aggregation");
+                            (AggregateStrategy::Hash, None)
+                        },
                     };
 
                 // TODO: fix cubestore planning and re-enable.
@@ -1722,6 +1731,20 @@ impl SortednessByGroupKey {
             Some((self.sort_order.len() - 1) + (self.detached_from_prefix as usize))
         } else {
             None
+        }
+    }
+
+    /// Returns group key sort order and AggregateStrategy, the same result as the previously
+    /// existing compute_aggregate_strategy function.
+    pub fn compute_aggregate_strategy(&self) -> (AggregateStrategy, Option<Vec<usize>>) {
+        if self.is_sorted_by_group_key() {
+            let order = self.sort_order[0]
+                .iter()
+                .map(|&(_sort_i, group_i)| group_i)
+                .collect_vec();
+            (AggregateStrategy::InplaceSorted, Some(order))
+        } else {
+            (AggregateStrategy::Hash, None)
         }
     }
 }
