@@ -133,15 +133,15 @@ pub struct OptimizerHints {
     /// the values may end up in ascending or descending order, nulls can go first or last.
     pub sort_order: Option<Vec<usize>>,
 
-    // Describes the sawtoothing runs of the stream that is partially sorted.  If sort_order is
-    // present, the first element of this should be sort_order.unwrap().  If we take a sorted stream
-    // and add a projection that removes a column in the middle of sort_order, and it isn't a single
-    // value column, approximate_sort_order.len() would be 2, and it would be the input's sort order
-    // split on the missing column.
-    //
-    // However, this is free to have jumps outside of the sort order.  We might have a MergeNode
-    // which retains the approximate_sort_order optimizer hint despite merging stuff out of order.
-    // The approximate sort order is more "statistical" in nature.
+    /// Describes the sawtoothing runs of the stream that is partially sorted.  If sort_order is
+    /// present, the first element of this should be sort_order.unwrap().  If we take a sorted stream
+    /// and add a projection that removes a column in the middle of sort_order, and it isn't a single
+    /// value column, approximate_sort_order.len() would be 2, and it would be the input's sort order
+    /// split on the missing column.
+    ///
+    /// However, this is free to have jumps outside of the sort order.  We might have a MergeNode
+    /// which retains the approximate_sort_order optimizer hint despite merging stuff out of order.
+    /// The approximate sort order is more "statistical" in nature.
     pub approximate_sort_order: Vec<Vec<usize>>,
     /// True if the sort order has no jumps other than those permitted by approximate_sort_order.
     /// This means that the ordering represents a truly sorted order with some columns missing.

@@ -1746,8 +1746,8 @@ impl SortednessByGroupKey {
 /// Checks the degree to which input is sortable by a group key.  If it succeeds, returns clumps of
 /// effectively adjacent sort key columns.  For example, if the input's sort key is (A, B, S, C, D,
 /// E, F, G, H, I, J), and S is a single value column, and the group keys are for Column values C,
-/// E, F, I, B, and K, then this function will return {sort_order: [[(1, B), (3, C)], [(5, E), (6,
-/// F)], [(9, I)]], unsorted: [K], succeeded: true}.
+/// E, F, I, B, and K, then this function will return {sort_order: [[#B, #C], [#E, #F], [#I]],
+/// unsorted: [#K], succeeded: true}, where #X is the offset of column X in the group key.
 pub fn input_sortedness_by_group_key(
     input: &dyn ExecutionPlan,
     group_key: &[(Arc<dyn PhysicalExpr>, String)],
@@ -1826,6 +1826,7 @@ pub fn input_sortedness_by_group_key(
     }
 }
 
+/// Computes input_sortedness_by_group_key using approximate sorting information.
 pub fn input_sortedness_by_group_key_using_approximate(
     input: &dyn ExecutionPlan,
     group_key: &[(Arc<dyn PhysicalExpr>, String)],
@@ -1853,6 +1854,8 @@ pub fn input_sortedness_by_group_key_using_approximate(
         input_to_group[input_col] = Some(group_i);
     }
 
+    // This is practically a copy/paste of ProjectionExec output_hints code -- except for
+    // group_key_used -- maybe combine the two.
     let mut group_key_used = vec![false; group_key.len()];
     let mut prefix_maintained = None::<bool>;
     let mut approximate_sort_order = Vec::new();
@@ -1884,11 +1887,9 @@ pub fn input_sortedness_by_group_key_using_approximate(
         }
         if !out_segment.is_empty() {
             approximate_sort_order.push(out_segment);
-            out_segment = Vec::new();
         }
     }
 
-    let approximate_sort_order_is_strict = hints.approximate_sort_order_is_strict;
     let approximate_sort_order_is_prefix = hints.approximate_sort_order_is_prefix && prefix_maintained == Some(true);
     let mut unsorted = Vec::<usize>::new();
     for (group_i, key_used) in group_key_used.into_iter().enumerate() {
@@ -2260,7 +2261,7 @@ mod tests {
         assert!(sortedness.succeeded);
         assert_eq!(
             sortedness.sort_order,
-            vec![vec![(0, 0), (1, 1), (2, 2), (3, 3), (4, 4)]]
+            vec![vec![0, 1, 2, 3, 4]]
         );
         assert_eq!(sortedness.unsorted, vec![] as Vec<usize>);
         assert_eq!(sortedness.detached_from_prefix, false);

@@ -63,6 +63,7 @@ impl MergeExec {
         &self.input
     }
 
+    /// Computes output hints appropriate for MergeExec nodes or anything behaving like one.
     pub fn output_hints_from_input_hints(input: &dyn ExecutionPlan) -> OptimizerHints {
         let input_hints = input.output_hints();
         let sort_order;

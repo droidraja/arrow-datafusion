@@ -206,7 +206,6 @@ impl ExecutionPlan for ProjectionExec {
 
             if !out_segment.is_empty() {
                 approximate_sort_order.push(out_segment);
-                out_segment = Vec::new();
             }
         }
         let approximate_sort_order_is_strict = input_hints.approximate_sort_order_is_strict;
