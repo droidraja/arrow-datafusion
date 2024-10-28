@@ -139,10 +139,8 @@ impl ExecutionPlan for CoalescePartitionsExec {
         } else {
             sort_order = None
         }
-        OptimizerHints {
-            sort_order,
-            single_value_columns: input_hints.single_value_columns,
-        }
+        // TODO: This could do approximate sort order, no?
+        OptimizerHints::new_sorted(sort_order, input_hints.single_value_columns)
     }
 
     fn fmt_as(

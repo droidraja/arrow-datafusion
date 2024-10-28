@@ -129,12 +129,54 @@ use smallvec::SmallVec;
 pub struct OptimizerHints {
     /// If the output is sorted, contains indices of the sort key columns in the output schema.
     /// Each partition should meet this sort order, but order between partitions is unspecified.
-    /// Note that this does **not** guarantee the exact ordering inside each of the columns, e.g.
+    /// Note that this does **not** specify the exact ordering inside each of the columns, e.g.
     /// the values may end up in ascending or descending order, nulls can go first or last.
     pub sort_order: Option<Vec<usize>>,
+
+    // Describes the sawtoothing runs of the stream that is partially sorted.  If sort_order is
+    // present, the first element of this should be sort_order.unwrap().  If we take a sorted stream
+    // and add a projection that removes a column in the middle of sort_order, and it isn't a single
+    // value column, approximate_sort_order.len() would be 2, and it would be the input's sort order
+    // split on the missing column.
+    //
+    // However, this is free to have jumps outside of the sort order.  We might have a MergeNode
+    // which retains the approximate_sort_order optimizer hint despite merging stuff out of order.
+    // The approximate sort order is more "statistical" in nature.
+    pub approximate_sort_order: Vec<Vec<usize>>,
+    /// True if the sort order has no jumps other than those permitted by approximate_sort_order.
+    /// This means that the ordering represents a truly sorted order with some columns missing.
+    pub approximate_sort_order_is_strict: bool,
+    /// True there are no missing columns in front of the approximate sort order.  If and only if
+    /// this and approximate_sort_order_is_strict are true, that implies sort_order should equal
+    /// Some(approximate_sort_order[0]).
+    pub approximate_sort_order_is_prefix: bool,
+
     /// Indices of columns that will always have the same value in each row. No information about
     /// the value is provided.
     pub single_value_columns: Vec<usize>,
+}
+
+impl OptimizerHints {
+    /// Use with None for sort_order is arguably deprecated.  Used to adapt code that preceded
+    /// approximate_sort_order information.
+    fn new_sorted(sort_order: Option<Vec<usize>>, single_value_columns: Vec<usize>) -> OptimizerHints {
+        let mut approximate_sort_order = Vec::new();
+        let mut approximate_sort_order_is_strict = false;
+        let mut approximate_sort_order_is_prefix = false;
+        if let Some(order) = &sort_order {
+            approximate_sort_order.push(order.clone());
+            approximate_sort_order_is_strict = true;
+            approximate_sort_order_is_prefix = true;
+        }
+        let hints = OptimizerHints {
+            sort_order,
+            approximate_sort_order,
+            approximate_sort_order_is_prefix,
+            approximate_sort_order_is_strict,
+            single_value_columns,
+        };
+        hints
+    }
 }
 
 /// `ExecutionPlan` represent nodes in the DataFusion Physical Plan.

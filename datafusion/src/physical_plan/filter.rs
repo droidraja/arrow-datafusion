@@ -128,10 +128,7 @@ impl ExecutionPlan for FilterExec {
         single_value_columns.sort_unstable();
         single_value_columns.dedup();
 
-        OptimizerHints {
-            sort_order: inputs_hints.sort_order,
-            single_value_columns,
-        }
+        OptimizerHints::new_sorted(inputs_hints.sort_order, single_value_columns)
     }
 
     async fn execute(&self, partition: usize) -> Result<SendableRecordBatchStream> {

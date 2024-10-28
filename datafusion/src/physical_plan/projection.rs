@@ -170,14 +170,14 @@ impl ExecutionPlan for ProjectionExec {
             }
         };
 
-        OptimizerHints {
-            single_value_columns,
-            sort_order: if sort_order.is_empty() {
+        OptimizerHints::new_sorted(
+            if sort_order.is_empty() {
                 None
             } else {
                 Some(sort_order)
             },
-        }
+            single_value_columns,
+        )
     }
 
     fn fmt_as(

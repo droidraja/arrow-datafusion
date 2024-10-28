@@ -513,7 +513,7 @@ impl DefaultPhysicalPlanner {
                 //single-value columns
                 let input_sortedness =
                     input_sortedness_by_group_key(input_exec.as_ref(), &groups);
-                let (strategy, order): (AggregateStrategy, Option<Vec<usize>>) =
+                let (strategy, partial_strategy, order): (AggregateStrategy, AggregateStrategy, Option<Vec<usize>>) =
                     match input_sortedness.sawtooth_levels() {
                         Some(0) => {
                             log::error!("DefaultPhysicalExpr: Perfect match for inplace aggregation");
@@ -523,15 +523,17 @@ impl DefaultPhysicalPlanner {
                                     *group_key_offset
                                 })
                                 .collect_vec();
-                            (AggregateStrategy::InplaceSorted, Some(order))
+                            (AggregateStrategy::InplaceSorted, AggregateStrategy::InplaceSorted, Some(order))
                         }
                         Some(n) => {
                             log::error!("DefaultPhysicalExpr: Non-perfect match for inplace aggregation: {} clumps", n);
-                            (AggregateStrategy::Hash, None)
+                            // TODO: Note that this is very oversimplified
+                            (AggregateStrategy::Hash, AggregateStrategy::InplaceSorted, None)
+                            // (AggregateStrategy::Hash, AggregateStrategy::Hash, None)
                         },
                         _ => {
                             log::error!("DefaultPhysicalExpr: No match for inplace aggregation");
-                            (AggregateStrategy::Hash, None)
+                            (AggregateStrategy::Hash, AggregateStrategy::Hash, None)
                         },
                     };
 
@@ -551,7 +553,7 @@ impl DefaultPhysicalPlanner {
 
                 let mut initial_aggr: Arc<dyn ExecutionPlan> =
                     Arc::new(HashAggregateExec::try_new(
-                        strategy,
+                        partial_strategy,
                         order.clone(),
                         AggregateMode::Partial,
                         groups.clone(),
@@ -590,7 +592,8 @@ impl DefaultPhysicalPlanner {
                     && ctx_state.config.concurrency > 1
                     && ctx_state.config.repartition_aggregations
                     && !contains_dict
-                    && strategy == AggregateStrategy::Hash;
+                    && strategy == AggregateStrategy::Hash
+                    && partial_strategy == AggregateStrategy::Hash;
 
                 let (initial_aggr, next_partition_mode): (
                     Arc<dyn ExecutionPlan>,
@@ -1764,6 +1767,8 @@ pub fn input_sortedness_by_group_key(
     }
 
     let hints = input.output_hints();
+    // log::error!("input_sortedness_by_group_key OptimizerHints is: {:?}", hints);
+    // log::error!("input_sortedness_by_group_key input is: {:#?}", input);
     // We check the group key is a prefix of the sort key.
     let sort_key = hints.sort_order;
     if sort_key.is_none() {

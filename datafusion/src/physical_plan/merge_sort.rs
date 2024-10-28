@@ -101,10 +101,10 @@ impl ExecutionPlan for MergeSortExec {
     }
 
     fn output_hints(&self) -> OptimizerHints {
-        OptimizerHints {
-            single_value_columns: self.input.output_hints().single_value_columns,
-            sort_order: Some(self.columns.iter().map(|c| c.index()).collect()),
-        }
+        OptimizerHints::new_sorted(
+            Some(self.columns.iter().map(|c| c.index()).collect()),
+            self.input.output_hints().single_value_columns,
+        )
     }
 
     async fn execute(&self, partition: usize) -> Result<SendableRecordBatchStream> {
@@ -114,6 +114,8 @@ impl ExecutionPlan for MergeSortExec {
                 partition
             )));
         }
+
+        log::error!("MergeSortExec executing across {} partitions", self.input.output_partitioning().partition_count());
 
         let inputs = join_all(
             (0..self.input.output_partitioning().partition_count())
@@ -614,10 +616,10 @@ impl ExecutionPlan for LastRowByUniqueKeyExec {
     }
 
     fn output_hints(&self) -> OptimizerHints {
-        OptimizerHints {
-            single_value_columns: self.input.output_hints().single_value_columns,
-            sort_order: self.input.output_hints().sort_order,
-        }
+        OptimizerHints::new_sorted(
+            self.input.output_hints().sort_order,
+            self.input.output_hints().single_value_columns,
+        )
     }
 
     async fn execute(&self, partition: usize) -> Result<SendableRecordBatchStream> {

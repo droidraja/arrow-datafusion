@@ -164,10 +164,10 @@ impl ExecutionPlan for MergeExec {
         } else {
             sort_order = None
         }
-        OptimizerHints {
+        OptimizerHints::new_sorted(
             sort_order,
-            single_value_columns: input_hints.single_value_columns,
-        }
+            input_hints.single_value_columns,
+        )
     }
 }
 

@@ -209,10 +209,10 @@ impl ExecutionPlan for SortExec {
         let input_hints = self.input.output_hints();
         // TODO: If sort_order_truncated is false, we can combine input_hints.sort_order.  Do this.
 
-        OptimizerHints {
-            sort_order: Some(order),
-            single_value_columns: input_hints.single_value_columns.clone(),
-        }
+        OptimizerHints::new_sorted(
+            Some(order),
+            input_hints.single_value_columns,
+        )
     }
 }
 

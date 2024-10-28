@@ -188,15 +188,15 @@ impl HashAggregateExec {
         match strategy {
             AggregateStrategy::Hash => assert!(output_sort_order.is_none()),
             AggregateStrategy::InplaceSorted => {
-                assert!(output_sort_order.is_some());
-                assert!(
-                    output_sort_order
-                        .as_ref()
-                        .unwrap()
-                        .iter()
-                        .all(|i| *i < group_expr.len()),
-                    "sort_order mentions value columns"
-                );
+                // TODO: If we make output hints contain partial sort orders, this will need to assert it's .is_some() and such.
+                if let Some(output_sort_order) = &output_sort_order {
+                    assert!(
+                        output_sort_order
+                            .iter()
+                            .all(|i| *i < group_expr.len()),
+                        "sort_order mentions value columns"
+                    );
+                }
             }
         }
 
@@ -325,10 +325,10 @@ impl ExecutionPlan for HashAggregateExec {
             AggregateStrategy::Hash => None,
             AggregateStrategy::InplaceSorted => self.output_sort_order.clone(),
         };
-        OptimizerHints {
+        OptimizerHints::new_sorted(
             sort_order,
-            single_value_columns: Vec::new(),
-        }
+            Vec::new(),
+        )
     }
 
     fn metrics(&self) -> HashMap<String, SQLMetric> {
