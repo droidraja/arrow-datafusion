@@ -616,9 +616,11 @@ impl ExecutionPlan for LastRowByUniqueKeyExec {
     }
 
     fn output_hints(&self) -> OptimizerHints {
+        // Possibly, this is abandoning approximate sort order information.
+        let input_hints = self.input.output_hints();
         OptimizerHints::new_sorted(
-            self.input.output_hints().sort_order,
-            self.input.output_hints().single_value_columns,
+            input_hints.sort_order,
+            input_hints.single_value_columns,
         )
     }
 

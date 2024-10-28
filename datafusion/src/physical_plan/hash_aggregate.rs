@@ -325,6 +325,9 @@ impl ExecutionPlan for HashAggregateExec {
             AggregateStrategy::Hash => None,
             AggregateStrategy::InplaceSorted => self.output_sort_order.clone(),
         };
+        // TODO: This could pass up self.approximate_sort_order (after saving it like
+        // self.output_sort_order).  (It is possible for self.output_sort_order to be None when
+        // there is an approximate sort order.)
         OptimizerHints::new_sorted(
             sort_order,
             Vec::new(),

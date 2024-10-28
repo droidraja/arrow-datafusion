@@ -517,12 +517,7 @@ impl DefaultPhysicalPlanner {
                     match input_sortedness.sawtooth_levels() {
                         Some(0) => {
                             log::error!("DefaultPhysicalExpr: Perfect match for inplace aggregation");
-                            let order = input_sortedness.sort_order[0]
-                                .iter()
-                                .map(|(_sort_key_offset, group_key_offset)| {
-                                    *group_key_offset
-                                })
-                                .collect_vec();
+                            let order = input_sortedness.sort_order[0].clone();  // TODO: No clone?
                             (AggregateStrategy::InplaceSorted, AggregateStrategy::InplaceSorted, Some(order))
                         }
                         Some(n) => {
@@ -1695,13 +1690,12 @@ pub fn evaluate_const(expr: Arc<dyn PhysicalExpr>) -> Result<Arc<dyn PhysicalExp
 /// Return value of input_sortedness_by_group_key.  If succeeded, every group key offset appears in
 /// sort_order or unsorted exactly once.
 pub struct SortednessByGroupKey {
-    /// Elems are (offset into the sort key, offset into the group key), with sort key offsets
-    /// strictly increasing.  Each Vec<(usize, usize)> is a clump of adjacent columns, with
+    /// Elems are offsets into the group key.  Each Vec<usize> is a clump of adjacent columns, with
     /// adjacency considered after ignoring single value columns.
     ///
-    /// Each column clump sees the input ordering in sawtoothing runs of rows, sawtoothing with different
-    /// granularity.
-    pub sort_order: Vec<Vec<(usize, usize)>>,
+    /// Each column clump sees the input ordering in sawtoothing runs of rows, sawtoothing with
+    /// different granularity.
+    pub sort_order: Vec<Vec<usize>>,
     /// Indexes into the group key.
     pub unsorted: Vec<usize>,
     /// true if the first clump of sort_order is detached from the prefix of the sort key (ignoring
@@ -1741,10 +1735,7 @@ impl SortednessByGroupKey {
     /// existing compute_aggregate_strategy function.
     pub fn compute_aggregate_strategy(&self) -> (AggregateStrategy, Option<Vec<usize>>) {
         if self.is_sorted_by_group_key() {
-            let order = self.sort_order[0]
-                .iter()
-                .map(|&(_sort_i, group_i)| group_i)
-                .collect_vec();
+            let order = self.sort_order[0].clone();
             (AggregateStrategy::InplaceSorted, Some(order))
         } else {
             (AggregateStrategy::Hash, None)
@@ -1804,14 +1795,14 @@ pub fn input_sortedness_by_group_key(
         };
     }
 
-    let mut clumps = Vec::<Vec<(usize, usize)>>::new();
+    let mut clumps = Vec::<Vec<usize>>::new();
     // At this point we walk through the sort_key_hit vec.
-    let mut clump = Vec::<(usize, usize)>::new();
+    let mut clump = Vec::<usize>::new();
     // Are our clumps detached from the sort prefix?
     let mut detached_from_prefix = false;
     for (i, &hit) in sort_key_hit.iter().enumerate() {
         if hit {
-            clump.push((i, sort_to_group[i]));
+            clump.push(sort_to_group[i]);
         } else if hints.single_value_columns.contains(&sort_key[i]) {
             // Don't end the clump.
         } else {
@@ -1831,6 +1822,85 @@ pub fn input_sortedness_by_group_key(
         sort_order: clumps,
         unsorted: unsorted_group_keys,
         detached_from_prefix,
+        succeeded: true,
+    }
+}
+
+pub fn input_sortedness_by_group_key_using_approximate(
+    input: &dyn ExecutionPlan,
+    group_key: &[(Arc<dyn PhysicalExpr>, String)],
+) -> SortednessByGroupKey {
+    if group_key.is_empty() {
+        // The caller has to deal with it (and in fact it wants to).
+        return SortednessByGroupKey::failed();
+    }
+
+    let hints = input.output_hints();
+    let input_schema = input.schema();
+    let mut input_to_group = vec![None; input_schema.fields().len()];
+
+    for (group_i, (g, _)) in group_key.iter().enumerate() {
+        let col = g.as_any().downcast_ref::<Column>();
+        if col.is_none() {
+            return SortednessByGroupKey::failed();
+        }
+        let input_col = input_schema.index_of(col.unwrap().name());
+        if input_col.is_err() {
+            return SortednessByGroupKey::failed();
+        }
+        let input_col = input_col.unwrap();
+        // If we have two group by exprs for the same input column, we might not optimize well in that case.
+        input_to_group[input_col] = Some(group_i);
+    }
+
+    let mut group_key_used = vec![false; group_key.len()];
+    let mut prefix_maintained = None::<bool>;
+    let mut approximate_sort_order = Vec::new();
+    for in_segment in hints.approximate_sort_order {
+        let mut out_segment = Vec::new();
+        for in_col in in_segment {
+            if let Some(group_i) = input_to_group[in_col] {
+                if prefix_maintained.is_none() {
+                    prefix_maintained = Some(true);
+                }
+                out_segment.push(group_i);
+                group_key_used[group_i] = true;
+            } else if hints.single_value_columns.contains(&in_col) {
+                continue;
+            } else {
+                if !out_segment.is_empty() {
+                    approximate_sort_order.push(out_segment);
+                    out_segment = Vec::new();
+                }
+                if prefix_maintained.is_none() {
+                    prefix_maintained = Some(false);
+                }
+            }
+
+            break;
+        }
+        if prefix_maintained.is_none() {
+            prefix_maintained = Some(false);
+        }
+        if !out_segment.is_empty() {
+            approximate_sort_order.push(out_segment);
+            out_segment = Vec::new();
+        }
+    }
+
+    let approximate_sort_order_is_strict = hints.approximate_sort_order_is_strict;
+    let approximate_sort_order_is_prefix = hints.approximate_sort_order_is_prefix && prefix_maintained == Some(true);
+    let mut unsorted = Vec::<usize>::new();
+    for (group_i, key_used) in group_key_used.into_iter().enumerate() {
+        if !key_used {
+            unsorted.push(group_i);
+        }
+    }
+
+    SortednessByGroupKey {
+        sort_order: approximate_sort_order,
+        unsorted,
+        detached_from_prefix: approximate_sort_order_is_prefix,
         succeeded: true,
     }
 }

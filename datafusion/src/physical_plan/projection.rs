@@ -149,6 +149,7 @@ impl ExecutionPlan for ProjectionExec {
             } else {
                 continue;
             }
+            // If we project input to two output columns, we just end up picking one (and have incomplete analysis).
             input_to_output[column.index()] = Some(out_i);
         }
 
@@ -170,14 +171,54 @@ impl ExecutionPlan for ProjectionExec {
             }
         };
 
-        OptimizerHints::new_sorted(
-            if sort_order.is_empty() {
-                None
-            } else {
-                Some(sort_order)
-            },
+        // Becomes Some(true) if the first column of the first segment is mapped.
+        let mut prefix_maintained = None::<bool>;
+        let mut approximate_sort_order = Vec::new();
+        for in_segment in input_hints.approximate_sort_order {
+            let mut out_segment = Vec::new();
+            for in_col in in_segment {
+                if let Some(out_col) = input_to_output[in_col] {
+                    if prefix_maintained.is_none() {
+                        prefix_maintained = Some(true);
+                    }
+                    out_segment.push(out_col);
+                } else if input_hints.single_value_columns.contains(&in_col) {
+                    continue;
+                } else {
+                    // Some column is missing.  Note that handling this case right here --
+                    // projections missing columns, and splitting up the sort order into multiple
+                    // segments -- is the main purpose of approximate_sort_order.
+                    if !out_segment.is_empty() {
+                        approximate_sort_order.push(out_segment);
+                        out_segment = Vec::new();
+                    }
+                    if prefix_maintained.is_none() {
+                        prefix_maintained = Some(false);
+                    }
+
+                    break;
+                }
+            }
+            if prefix_maintained.is_none() {
+                // The whole first segment was single-value columns and it's gone now.
+                prefix_maintained = Some(false);
+            }
+
+            if !out_segment.is_empty() {
+                approximate_sort_order.push(out_segment);
+                out_segment = Vec::new();
+            }
+        }
+        let approximate_sort_order_is_strict = input_hints.approximate_sort_order_is_strict;
+        let approximate_sort_order_is_prefix = input_hints.approximate_sort_order_is_prefix && prefix_maintained == Some(true);
+
+        OptimizerHints {
+            sort_order: if sort_order.is_empty() { None } else { Some(sort_order) },
+            approximate_sort_order,
+            approximate_sort_order_is_prefix,
+            approximate_sort_order_is_strict,
             single_value_columns,
-        )
+        }
     }
 
     fn fmt_as(

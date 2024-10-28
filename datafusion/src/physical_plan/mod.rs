@@ -157,9 +157,9 @@ pub struct OptimizerHints {
 }
 
 impl OptimizerHints {
-    /// Use with None for sort_order is arguably deprecated.  Used to adapt code that preceded
-    /// approximate_sort_order information.
-    fn new_sorted(sort_order: Option<Vec<usize>>, single_value_columns: Vec<usize>) -> OptimizerHints {
+    /// Mostly used to adapt code that preceded the creation of approximate_sort_order fields --
+    /// callers may be throwing away information about approximate sort order.
+    pub fn new_sorted(sort_order: Option<Vec<usize>>, single_value_columns: Vec<usize>) -> OptimizerHints {
         let mut approximate_sort_order = Vec::new();
         let mut approximate_sort_order_is_strict = false;
         let mut approximate_sort_order_is_prefix = false;
@@ -177,6 +177,7 @@ impl OptimizerHints {
         };
         hints
     }
+
 }
 
 /// `ExecutionPlan` represent nodes in the DataFusion Physical Plan.

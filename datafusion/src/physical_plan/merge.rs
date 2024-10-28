@@ -62,6 +62,28 @@ impl MergeExec {
     pub fn input(&self) -> &Arc<dyn ExecutionPlan> {
         &self.input
     }
+
+    pub fn output_hints_from_input_hints(input: &dyn ExecutionPlan) -> OptimizerHints {
+        let input_hints = input.output_hints();
+        let sort_order;
+        let approximate_sort_order_is_strict: bool;
+        if input.output_partitioning().partition_count() <= 1 {
+            sort_order = input_hints.sort_order;
+            approximate_sort_order_is_strict = input_hints.approximate_sort_order_is_strict;
+        } else {
+            sort_order = None;
+            approximate_sort_order_is_strict = false;
+        }
+        let approximate_sort_order = input_hints.approximate_sort_order;
+
+        OptimizerHints {
+            sort_order,
+            approximate_sort_order,
+            approximate_sort_order_is_prefix: input_hints.approximate_sort_order_is_prefix & approximate_sort_order_is_strict,
+            approximate_sort_order_is_strict,
+            single_value_columns: input_hints.single_value_columns,
+        }
+    }
 }
 
 #[async_trait]
@@ -157,17 +179,7 @@ impl ExecutionPlan for MergeExec {
     }
 
     fn output_hints(&self) -> OptimizerHints {
-        let input_hints = self.input.output_hints();
-        let sort_order;
-        if self.input.output_partitioning().partition_count() <= 1 {
-            sort_order = input_hints.sort_order
-        } else {
-            sort_order = None
-        }
-        OptimizerHints::new_sorted(
-            sort_order,
-            input_hints.single_value_columns,
-        )
+        MergeExec::output_hints_from_input_hints(self.input.as_ref())
     }
 }
 

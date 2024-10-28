@@ -29,6 +29,7 @@ use async_trait::async_trait;
 use arrow::record_batch::RecordBatch;
 use arrow::{datatypes::SchemaRef, error::Result as ArrowResult};
 
+use super::merge::MergeExec;
 use super::RecordBatchStream;
 use crate::error::{DataFusionError, Result};
 use crate::physical_plan::{
@@ -38,7 +39,6 @@ use crate::physical_plan::{
 use super::SendableRecordBatchStream;
 use crate::physical_plan::common::spawn_execution;
 use pin_project_lite::pin_project;
-use std::option::Option::None;
 
 /// Merge execution plan executes partitions in parallel and combines them into a single
 /// partition. No guarantees are made about the order of the resulting partition.
@@ -132,15 +132,7 @@ impl ExecutionPlan for CoalescePartitionsExec {
     }
 
     fn output_hints(&self) -> OptimizerHints {
-        let input_hints = self.input.output_hints();
-        let sort_order;
-        if self.input.output_partitioning().partition_count() <= 1 {
-            sort_order = input_hints.sort_order
-        } else {
-            sort_order = None
-        }
-        // TODO: This could do approximate sort order, no?
-        OptimizerHints::new_sorted(sort_order, input_hints.single_value_columns)
+        MergeExec::output_hints_from_input_hints(self.input.as_ref())
     }
 
     fn fmt_as(

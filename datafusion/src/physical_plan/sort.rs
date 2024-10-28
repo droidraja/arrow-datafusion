@@ -190,11 +190,9 @@ impl ExecutionPlan for SortExec {
 
     fn output_hints(&self) -> OptimizerHints {
         let mut order = Vec::with_capacity(self.expr.len());
-        // let mut sort_order_truncated = false;
         for s in &self.expr {
             let column = s.expr.as_any().downcast_ref::<Column>();
             if column.is_none() {
-                // sort_order_truncated = true;
                 break;
             }
             let column = column.unwrap();
@@ -207,7 +205,6 @@ impl ExecutionPlan for SortExec {
         }
 
         let input_hints = self.input.output_hints();
-        // TODO: If sort_order_truncated is false, we can combine input_hints.sort_order.  Do this.
 
         OptimizerHints::new_sorted(
             Some(order),
