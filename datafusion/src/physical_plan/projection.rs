@@ -195,8 +195,6 @@ impl ExecutionPlan for ProjectionExec {
                     if prefix_maintained.is_none() {
                         prefix_maintained = Some(false);
                     }
-
-                    break;
                 }
             }
             if prefix_maintained.is_none() {

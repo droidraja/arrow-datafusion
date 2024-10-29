@@ -1879,8 +1879,6 @@ pub fn input_sortedness_by_group_key_using_approximate(
                     prefix_maintained = Some(false);
                 }
             }
-
-            break;
         }
         if prefix_maintained.is_none() {
             prefix_maintained = Some(false);
@@ -1901,7 +1899,7 @@ pub fn input_sortedness_by_group_key_using_approximate(
     SortednessByGroupKey {
         sort_order: approximate_sort_order,
         unsorted,
-        detached_from_prefix: approximate_sort_order_is_prefix,
+        detached_from_prefix: !approximate_sort_order_is_prefix,
         succeeded: true,
     }
 }
@@ -2256,16 +2254,34 @@ mod tests {
             physical_group_key.push((phys_expr, "".to_owned()));
         }
 
-        let sortedness =
-            input_sortedness_by_group_key(execution_plan.as_ref(), &physical_group_key);
-        assert!(sortedness.succeeded);
-        assert_eq!(
-            sortedness.sort_order,
-            vec![vec![0, 1, 2, 3, 4]]
-        );
-        assert_eq!(sortedness.unsorted, vec![] as Vec<usize>);
-        assert_eq!(sortedness.detached_from_prefix, false);
-        assert!(sortedness.is_sorted_by_group_key());
+        {
+            let sortedness =
+                input_sortedness_by_group_key(execution_plan.as_ref(), &physical_group_key);
+            assert!(sortedness.succeeded);
+            assert_eq!(
+                sortedness.sort_order,
+                vec![vec![0, 1, 2, 3, 4]]
+            );
+            assert_eq!(sortedness.unsorted, vec![] as Vec<usize>);
+            assert_eq!(sortedness.detached_from_prefix, false);
+            assert!(sortedness.is_sorted_by_group_key());
+        }
+
+        {
+            let sortedness =
+                input_sortedness_by_group_key_using_approximate(execution_plan.as_ref(), &physical_group_key);
+            assert!(sortedness.succeeded, "using_approximate");
+            assert_eq!(
+                sortedness.sort_order,
+                vec![vec![0, 1, 2, 3, 4]],
+                "using_approximate"
+            );
+            assert_eq!(sortedness.unsorted, vec![] as Vec<usize>, "using_approximate");
+            assert_eq!(sortedness.detached_from_prefix, false, "using_approximate");
+            assert!(sortedness.is_sorted_by_group_key(), "using_approximate");
+        }
+
+
 
         Ok(())
     }

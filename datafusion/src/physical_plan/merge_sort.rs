@@ -33,6 +33,7 @@ use arrow::compute::{
 use arrow::datatypes::SchemaRef;
 use arrow::error::Result as ArrowResult;
 use arrow::record_batch::RecordBatch;
+use itertools::Itertools;
 
 use super::{RecordBatchStream, SendableRecordBatchStream};
 use crate::error::{DataFusionError, Result};
@@ -101,9 +102,77 @@ impl ExecutionPlan for MergeSortExec {
     }
 
     fn output_hints(&self) -> OptimizerHints {
+        // We do want to retain approximate sorting information.  Note that the sorting algorithm's
+        // index field in struct Key<'a> makes us see that each input stream's unused sort keys
+        // result in sawtoothed runs.
+
+        // For example, if the input streams are sorted by columns A, B, C, D, E, and the sort key
+        // is A, B, C, then we want the approximate_sort_order to be [[A, B, C], [D, E]], because
+        // for a given value under ABC, the sort order will have multiple increasing (sawtoothing)
+        // runs of columns DE the way the input streams get merged (due to the index field usage in
+        // struct Key<'a>).
+
+        let mut hints: OptimizerHints = self.input.output_hints();
+        let sort_order: Vec<usize> = self.columns.iter().map(|c| c.index()).collect();
+
+        'fallback: {
+            if !hints.approximate_sort_order_is_prefix || hints.approximate_sort_order.is_empty() {
+                break 'fallback;
+            }
+            let first_seg: &Vec<usize> = &hints.approximate_sort_order[0];
+
+            let mut sort_order_index: usize = 0;
+            let mut approx_index: usize = 0;
+            while sort_order_index < sort_order.len() {
+                if first_seg[approx_index] == sort_order[sort_order_index] {
+                    sort_order_index += 1;
+                    approx_index += 1;
+                    if approx_index == first_seg.len() {
+                        break;
+                    }
+                } else if hints.single_value_columns.contains(&first_seg[approx_index]) {
+                    approx_index += 1;
+                    if approx_index == first_seg.len() {
+                        break;
+                    }
+                } else if hints.single_value_columns.contains(&sort_order[sort_order_index]) {
+                    sort_order_index += 1;
+                } else {
+                    // This should not happen.
+                    break 'fallback;
+                }
+            }
+
+            if approx_index > 0 {
+                if approx_index != first_seg.len() {
+                    let second_seg = first_seg[approx_index..].iter().map(|&x| x).collect_vec();
+                    hints.approximate_sort_order.insert(1, second_seg);
+                    hints.approximate_sort_order[0].truncate(approx_index);
+                } else {
+                    // It would be weird if sort_order_index is not equal to sort_order.len() --
+                    // another instance of single value columns (we hope).
+
+                    // Nothing to do here.
+                }
+                hints.approximate_sort_order_is_prefix = true;
+            } else {
+                // approx_index == 0
+
+                // It's possible we sorted by some single value column, and this means subsequent
+                // columns are sawtoothing in separate columns.  Or is it?  Either the input_hints's
+                // sort_order is inconsistent with the approximate_sort_order, or we have some
+                // particular treatment of single_value_columns in different code deciding whether
+                // we can use a MergeExec node, that leads to this case.
+                hints.approximate_sort_order_is_prefix = false;
+            }
+
+            return hints;
+
+        }
+
         OptimizerHints::new_sorted(
-            Some(self.columns.iter().map(|c| c.index()).collect()),
-            self.input.output_hints().single_value_columns,
+            Some(sort_order),
+            hints.single_value_columns,
         )
     }
 
@@ -616,7 +685,6 @@ impl ExecutionPlan for LastRowByUniqueKeyExec {
     }
 
     fn output_hints(&self) -> OptimizerHints {
-        // Possibly, this is abandoning approximate sort order information.
         let input_hints = self.input.output_hints();
         OptimizerHints::new_sorted(
             input_hints.sort_order,
