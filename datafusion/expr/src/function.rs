@@ -559,6 +559,8 @@ pub fn signature(fun: &BuiltinScalarFunction) -> Signature {
                     DataType::Decimal(38, 10),
                     DataType::Decimal(38, 10),
                 ]),
+                TypeSignature::Exact(vec![DataType::Decimal(38, 10), DataType::Int64]),
+                TypeSignature::Exact(vec![DataType::Float64, DataType::Int64]),
             ],
             fun.volatility(),
         ),
