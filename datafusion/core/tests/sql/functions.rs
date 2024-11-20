@@ -612,14 +612,12 @@ async fn pi_function() -> Result<()> {
 }
 
 macro_rules! assert_logical_plan {
-    ($ctx:expr, $udf_call:expr, $expected:expr) => {
-        {
-            let sql = format!("SELECT {}", $udf_call);
-            let logical_plan = $ctx.create_logical_plan(&sql)?;
-            let formatted = format!("{:?}", logical_plan);
-            assert_eq!($expected, formatted.split("\n").collect::<Vec<&str>>());
-        }
-    };
+    ($ctx:expr, $udf_call:expr, $expected:expr) => {{
+        let sql = format!("SELECT {}", $udf_call);
+        let logical_plan = $ctx.create_logical_plan(&sql)?;
+        let formatted = format!("{:?}", logical_plan);
+        assert_eq!($expected, formatted.split("\n").collect::<Vec<&str>>());
+    }};
 }
 
 #[tokio::test]
@@ -629,10 +627,7 @@ async fn test_log_round_logical_plan() -> Result<()> {
     assert_logical_plan!(
         ctx,
         "log(2.0, 2)",
-        vec![
-            "Projection: log(Float64(2), Int64(2))",
-            "  EmptyRelation",
-        ]
+        vec!["Projection: log(Float64(2), Int64(2))", "  EmptyRelation",]
     );
 
     assert_logical_plan!(
